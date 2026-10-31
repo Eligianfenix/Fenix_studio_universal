@@ -1,0 +1,70 @@
+# ==============================================================================
+# FENIX STUDIO — REGLAS DE EXCLUSIÓN GIT (SEGURIDAD Y OPSEC ESTRICTO)
+# Propiedad Intelectual: Eli Gian Cortez Leonardi (San Juan, Argentina)
+# ==============================================================================
+
+# --- Documentación Interna y Especificaciones de Arquitectura ---
+*.docx
+*.pdf
+*.xlsx
+*.jpg
+*.png
+*.jpeg
+*.webp
+fenix_studio_*.md
+META_PLAN_*.md
+INVENTARIO_*.md
+Prompt_*.md
+PROMPT_*.md
+HANDOVER_*.md
+Reporte_*.md
+Dossier_*.md
+!README.md
+
+# --- Investigaciones Internas, Prompts y Audios Fénix ---
+Implementacion_del_Protocolo_Fenix_v3.md
+Arquitectura_e_Ingesta_Fenix_v3.md
+Catalogo_de_APIs_IA_Gratuitas.md
+Prompt_Deep_Research_Motor_Procesador_v3.md
+*.mp3
+*.wav
+*.py
+
+# --- Claves, Secretos y Credenciales ---
+.env
+.env.*
+*.key
+*.pem
+*.jks
+*.keystore
+local.properties
+google-services.json
+secrets/
+
+# --- Respaldos Locales y Bóvedas Privadas ---
+backup/
+backups/
+vault/
+scratch/
+temp/
+"catedras de prueba"/
+catedras\ de\ prueba/
+catedras de prueba/
+
+# --- Plan Definitivo Axiom (Roadmap Blindado) ---
+# Carpeta de planificación interna excluida de Git (OPSEC y propiedad intelectual)
+axiom\ plan\ fenix\ studio/
+axiom plan fenix studio/
+
+# --- Entornos de Desarrollo y Sistema Operativo ---
+.idea/
+*.iml
+.gradle/
+build/
+*/build/
+.DS_Store
+Thumbs.db
+*~
+*.log
+=
+.trae/
