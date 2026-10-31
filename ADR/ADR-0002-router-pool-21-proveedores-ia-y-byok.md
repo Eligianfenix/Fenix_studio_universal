@@ -1,26 +1,44 @@
-# ADR-0002 — Router Pool de 21 Proveedores de IA y Régimen BYOK
+# ADR-0002 — Topología del Router Pool: 16 Proveedores Primarios a Costo $0.00 y Régimen BYOK
 
 **ID:** ADR-0002  
 **Fecha:** 2026-10-31  
-**Estado:** APROBADO (Decisión Vinculante del Creador — CONF-06 / DEC-02)  
+**Estado:** APROBADO (Decisión Vinculante del Creador — Depuración Forense de 124 Proveedores)  
 **Autoridad:** Eli Gian Cortez Leonardi (Creador)  
 **Área:** Inteligencia Artificial y Red (:core:network-ai)  
 
 ---
 
 ## 1. Contexto y Conflicto
-Existía una propuesta en borradores preliminares de crear cuentas masivas simuladas para burlar cuotas de Cloudflare/proveedores, lo cual entraba en colisión directa con la Regla Ética RN-25 y con los Términos de Servicio de los proveedores.
+Existía una referencia histórica a "21 proveedores" en borradores iniciales. Tras la auditoría empírica forense exhaustiva de 124 proveedores (`REGISTRO_ESTADO_124_PROVEEDORES.md`), se descartaron 88 servicios por paywalls o tarjetas bancarias obligatorias, y se seleccionaron los **16 Proveedores Primarios con cuota diaria renovable a Costo Cero ($0.00 USD)** para el Master Dispatcher y los nodos de inferencia en la nube.
 
-## 2. Opciones Consideradas
-1. **Opción A:** Esquemas de pooling masivo no documentado (Rechazada por riesgo de baneo y violación de TOS).
-2. **Opción B (Adoptada):** Implementar un **Router Pool transparente de 21 proveedores de IA** con conmutación dinámica ética, sumado al esquema BYOK (Bring Your Own Key) para el usuario.
+## 2. Los 16 Proveedores Primarios de Inferencia (Despacho Activo)
+1. **Google Gemini** (Anillo 1 — Gran ventana de contexto y multimodalidad).
+2. **Groq Cloud** (Anillo 2 — Ultra-baja latencia <500ms, Llama-3.3 70B, GPT-120B).
+3. **SambaNova Systems** (Anillo 2 — DeepSeek-R1 671B y Llama-3.3 full precision).
+4. **SiliconFlow** (Anillo 2 — Modelos $0 permanentes Qwen/DeepSeek).
+5. **Cohere** (Anillo 2 — Command R+ y citaciones estructuradas).
+6. **NVIDIA NIM** (Anillo 2 — Nemotron, Llama-3.3).
+7. **OpenRouter** (Anillo 3 — Catálogo dinámico `:free`).
+8. **FastRouter** (Anillo 3 — Auto-routing gratuito).
+9. **UnoRouter** (Anillo 3 — Modelos abiertos gratuitos).
+10. **RouteWay** (Anillo 3 — Modelos free).
+11. **TokenHarbor** (Anillo 3 — Modelos free).
+12. **Requesty** (Anillo 3 — Modelos gratuitos).
+13. **Plugsky** (Anillo 3 — Modelos lite).
+14. **Agnes AI** (Anillo 3 — Agnes-flash).
+15. **Airforce** (Anillo 3 — Unified gateway).
+16. **Baseten** (Anillo 3 — Modelos OSS).
+
+*Proveedores Auxiliares y Especializados (Fuera del bucle principal de chat):*
+- **Naga, Kilocode, Mancer:** Reserva secundaria / contingencia.
+- **Jina AI y Voyage AI:** Especializados en extracción web limpia y embeddings vectoriales (Fases 6 y 7).
+- **Ollama / Local:** Motores offline en hardware del usuario.
 
 ## 3. Decisión
-1. **Router Pool de 21 Proveedores:** Se opera un router ético que prioriza los modelos más avanzados (Anillo 1 y Anillo 2) para el procesamiento académico pesado, dejando modelos más ligeros para el chat cotidiano.
-2. **Prohibición de Hardcodeo:** No se hardcodean nombres o versiones de modelos en el código fuente. Se gestionan de forma dinámica o mediante el panel administrativo de la app admin.
-3. **Esquema BYOK:** Se preconfiguran las URLs de los proveedores admitidos para que el usuario pueda ingresar su propia clave API (1 por proveedor) con botón "Probar Conexión" sin gasto de cuota innecesario.
-4. **Independencia del MVP:** La asistencia de IA es opcional y conectada (Fase 9); el MVP (Fase 5) opera 100% offline sin requerir IA.
+1. **Despacho Primario en 16 Proveedores:** En primera instancia, el Master Dispatcher y los Inference Nodes en la nube operan dispersando la carga entre estos 16 proveedores estables para garantizar tiempos de respuesta < 5-10 minutos bajo concurrencia sin violar TOS.
+2. **Régimen BYOK:** La aplicación móvil permite a cada usuario configurar sus propias claves de estos u otros proveedores mediante URLs preconfiguradas y botón "Probar Conexión".
+3. **Desacoplamiento del MVP:** El MVP (Fase 5) opera 100% offline sin red; la asistencia conectada de estos 16 proveedores entra en juego en la Fase 9 como valor agregado opcional.
 
 ## 4. Impacto
-- **Cumplimiento Ético:** Cero infracciones de TOS.
-- **Resiliencia:** Si un proveedor satura o cae, el router conmuta automáticamente al siguiente sin interrumpir la experiencia de estudio.
+- **Máxima Disponibilidad a Costo Cero:** Cero gasto para el usuario y el proyecto.
+- **Robustez Forense:** Si un proveedor satura su cuota de minuto (429), el dispatcher conmuta en milisegundos a los 15 restantes del pool.
