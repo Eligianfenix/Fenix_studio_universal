@@ -14,8 +14,6 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.media.audiofx.AutomaticGainControl
-import android.media.audiofx.NoiseSuppressor
 import android.os.Handler
 import android.os.Looper
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
@@ -87,7 +85,6 @@ class VoiceToTextEngine(
             )
             val config = OfflineRecognizerConfig(
                 modelConfig = modelConfig,
-                hotwordsScore = 1.5f,
             )
             whisperRecognizer = OfflineRecognizer(
                 assetManager = context.assets,
@@ -114,7 +111,7 @@ class VoiceToTextEngine(
         val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         val audioRecord = try {
             AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 sampleRate,
                 channelConfig,
                 audioFormat,
@@ -125,19 +122,6 @@ class VoiceToTextEngine(
             onError?.invoke("No se pudo inicializar el micrófono: ${e.localizedMessage}")
             return
         }
-
-        val audioSessionId = audioRecord.audioSessionId
-        val noiseSuppressor = if (NoiseSuppressor.isAvailable()) {
-            try {
-                NoiseSuppressor.create(audioSessionId)?.apply { enabled = true }
-            } catch (_: Exception) { null }
-        } else null
-
-        val agc = if (AutomaticGainControl.isAvailable()) {
-            try {
-                AutomaticGainControl.create(audioSessionId)?.apply { enabled = true }
-            } catch (_: Exception) { null }
-        } else null
 
         val recordedSamples = mutableListOf<Float>()
 
@@ -165,10 +149,6 @@ class VoiceToTextEngine(
                 }
 
                 try {
-                    noiseSuppressor?.release()
-                    agc?.release()
-                } catch (_: Exception) {}
-                try {
                     audioRecord.stop()
                     audioRecord.release()
                 } catch (_: Exception) {}
@@ -180,18 +160,26 @@ class VoiceToTextEngine(
                 val recognizer = whisperRecognizer
                 if (recognizer != null && recordedSamples.isNotEmpty()) {
                     mainHandler.post { onPartialResult?.invoke("Enviando audio...") }
-                    val hotwords = "resumen / análisis / bibliografía / autor / concepto / hipótesis / conclusión / metodología / epistemología / definición / argumento / teoría / síntesis / explicación / cátedra / texto"
-                    val stream = try {
-                        recognizer.createStream(hotwords).apply {
-                            try { setOption("prompt", "Transcripción académica formal en español.") } catch (_: Exception) {}
+
+                    // Asegurar al menos 0.5 segundos de audio (padding de ceros al final) para evitar subdesbordamiento de ventana mel en Whisper ONNX con palabras ultracortas
+                    val samples = if (recordedSamples.size < sampleRate / 2) {
+                        val padded = recordedSamples.toMutableList()
+                        while (padded.size < sampleRate / 2) {
+                            padded.add(0.0f)
                         }
-                    } catch (_: Exception) {
-                        recognizer.createStream()
+                        padded.toFloatArray()
+                    } else {
+                        recordedSamples.toFloatArray()
                     }
-                    stream.acceptWaveform(recordedSamples.toFloatArray(), sampleRate)
-                    recognizer.decode(stream)
-                    val resultText = recognizer.getResult(stream).text.trim()
-                    stream.release()
+
+                    val stream = recognizer.createStream()
+                    val resultText = try {
+                        stream.acceptWaveform(samples, sampleRate)
+                        recognizer.decode(stream)
+                        recognizer.getResult(stream).text.trim()
+                    } finally {
+                        stream.release()
+                    }
 
                     mainHandler.post {
                         _state.update { it.copy(isListening = false, rmsDb = 0f, partialText = resultText) }
