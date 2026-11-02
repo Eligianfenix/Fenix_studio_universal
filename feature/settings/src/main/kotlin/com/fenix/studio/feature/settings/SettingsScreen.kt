@@ -108,13 +108,23 @@ fun SettingsScreen(
             )
             FenixThemeMode.entries.forEach { mode ->
                 val isSelected = state.accessibilityConfig.themeMode == mode
+                val modeTitle = when (mode) {
+                    FenixThemeMode.LIGHT -> "Claro Pergamino Cálido (LIGHT)"
+                    FenixThemeMode.DARK -> "Oscuro Obsidiana Fénix (DARK)"
+                    FenixThemeMode.HIGH_CONTRAST_OLED -> "Alto Contraste OLED Puro (HIGH_CONTRAST_OLED)"
+                }
+                val modeSubtitle = when (mode) {
+                    FenixThemeMode.LIGHT -> "Marfil suave y terracota para lectura diurna sin encandilar"
+                    FenixThemeMode.DARK -> "Carbón volcánico estilizado con acentos en ámbar brasa"
+                    FenixThemeMode.HIGH_CONTRAST_OLED -> "Negro absoluto #000000, bordes de 2 dp y contraste 21:1"
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) colors.surface else colors.background)
+                        .background(if (isSelected) colors.propositionPrimaryTheoryContainer else colors.background)
                         .border(
-                            width = colors.borderStrokeWidth,
+                            width = if (isSelected) 2.dp else colors.borderStrokeWidth,
                             color = if (isSelected) colors.primary else colors.outline,
                             shape = RoundedCornerShape(8.dp),
                         )
@@ -124,14 +134,24 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Column(
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = modeTitle,
+                            style = typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (isSelected) colors.onPropositionPrimaryTheoryContainer else colors.onBackground,
+                        )
+                        Text(
+                            text = modeSubtitle,
+                            style = typography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
                     Text(
-                        text = mode.name,
-                        style = typography.bodyMedium,
-                        color = colors.onSurface,
-                    )
-                    Text(
-                        text = if (isSelected) "ACTIVO" else "SELECCIONAR",
-                        style = typography.labelMedium,
+                        text = if (isSelected) "● ACTIVO" else "SELECCIONAR",
+                        style = typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                         color = if (isSelected) colors.primary else colors.onSurfaceVariant,
                     )
                 }

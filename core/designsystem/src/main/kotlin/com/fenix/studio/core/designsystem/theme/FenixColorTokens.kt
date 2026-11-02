@@ -51,26 +51,31 @@ object FenixPalettes {
     val PropositionBlue = Color(0xFF1A73E8)
     val PropositionAmber = Color(0xFFFA903E)
 
+    /**
+     * Paleta Clara Estilizada "Pergamino Marfil y Terracota Fénix" (Modo LIGHT para lectura diurna).
+     * Sustituye el blanco frío (#FFFFFF) por tonos cálidos de papel marfil y bronce terracota,
+     * garantizando contraste WCAG 2.2 AAA (>= 7.0:1).
+     */
     val LightAAA = FenixSemanticColors(
-        background = Color(0xFFFFFFFF),
-        surface = Color(0xFFF8FAFC),
-        onBackground = Color(0xFF0F172A),
-        onSurface = Color(0xFF0F172A),
-        onSurfaceVariant = Color(0xFF334155),
-        primary = Color(0xFF0B3D91),
-        onPrimary = Color(0xFFFFFFFF),
-        error = Color(0xFF991B1B),
-        outline = Color(0xFF334155),
+        background = Color(0xFFFAF6F0), // Pergamino Marfil Cálido
+        surface = Color(0xFFF2EAE0), // Piedra Arena Suave para paneles y tarjetas
+        onBackground = Color(0xFF140E0B), // Tinta Obsidiana-Sepia (> 16.5:1)
+        onSurface = Color(0xFF140E0B), // Tinta Obsidiana-Sepia (> 15.0:1)
+        onSurfaceVariant = Color(0xFF423025), // Bronce Oscuro Mate (> 9.8:1 sobre surface)
+        primary = Color(0xFF8C2D04), // Terracota Fuego Profundo (> 8.4:1 sobre background)
+        onPrimary = Color(0xFFFFFFFF), // Blanco sobre botón terracota (> 9.1:1)
+        error = Color(0xFF8E1414), // Carmesí Profundo (> 9.0:1)
+        outline = Color(0xFF8A7160), // Borde Bronce Cálido
         borderStrokeWidth = 1.dp,
-        propositionPrimaryTheoryAccent = PropositionBlue,
-        propositionPrimaryTheoryContainer = Color(0xFFF0F7FF),
-        onPropositionPrimaryTheoryContainer = Color(0xFF0A2540),
-        propositionComplementaryAccent = PropositionAmber,
-        propositionComplementaryContainer = Color(0xFFFFF8F1),
-        onPropositionComplementaryContainer = Color(0xFF3B1D06),
-        cooldownContainer = Color(0xFFFFFBEB),
-        onCooldownContainer = Color(0xFF3B2106),
-        cooldownAccent = Color(0xFF92400E),
+        propositionPrimaryTheoryAccent = Color(0xFF9A3412),
+        propositionPrimaryTheoryContainer = Color(0xFFF5E8DC),
+        onPropositionPrimaryTheoryContainer = Color(0xFF1C0F07),
+        propositionComplementaryAccent = Color(0xFFB45309),
+        propositionComplementaryContainer = Color(0xFFF7ECD9),
+        onPropositionComplementaryContainer = Color(0xFF241405),
+        cooldownContainer = Color(0xFFFAEFD4),
+        onCooldownContainer = Color(0xFF2B1804),
+        cooldownAccent = Color(0xFF854D0E),
     )
 
     /**

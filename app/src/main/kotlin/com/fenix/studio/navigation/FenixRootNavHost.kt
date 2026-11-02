@@ -121,6 +121,32 @@ fun FenixRootNavHost(
     val docsViewModel: FenixDocsViewModel = viewModel()
     val communityViewModel: CommunityViewModel = viewModel()
 
+    val settingsState by settingsViewModel.uiState.collectAsState()
+    val accessibilityPrefs = remember(context) {
+        context.getSharedPreferences("fenix_accessibility_prefs", android.content.Context.MODE_PRIVATE)
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val savedModeName = accessibilityPrefs.getString("theme_mode", null)
+        val savedMode = savedModeName?.let {
+            runCatching { com.fenix.studio.core.designsystem.theme.FenixThemeMode.valueOf(it) }.getOrNull()
+        }
+        if (savedMode != null && savedMode != settingsState.accessibilityConfig.themeMode) {
+            settingsViewModel.onSelectThemeMode(savedMode)
+        }
+        val savedDyslexic = accessibilityPrefs.getBoolean("open_dyslexic", false)
+        if (savedDyslexic != settingsState.accessibilityConfig.useOpenDyslexicFont) {
+            settingsViewModel.onToggleOpenDyslexicFont(savedDyslexic)
+        }
+        val savedProfileName = accessibilityPrefs.getString("touch_profile", null)
+        val savedProfile = savedProfileName?.let {
+            runCatching { com.fenix.studio.core.designsystem.theme.FenixTouchTargetProfile.valueOf(it) }.getOrNull()
+        }
+        if (savedProfile != null && savedProfile != settingsState.accessibilityConfig.touchTargetProfile) {
+            settingsViewModel.onSelectTouchTargetProfile(savedProfile)
+        }
+    }
+
     // Motor TTS Híbrido (Edge-TTS / Android Nativo MF-D.6)
     val ttsEngine = remember { HybridTtsEngine(context) }
 
@@ -169,25 +195,26 @@ fun FenixRootNavHost(
     // Guardián de fallos sanitizado
     val lastCrash by SanitizedCrashReporter.lastCrashFlow.collectAsState()
 
-    // Diálogo de Crash Sanitizado
-    lastCrash?.let { crash ->
-        SanitizedCrashDialog(
-            crashData = crash,
-            onSendVoluntaryReportClick = {
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, SanitizedCrashReporter.formatTelegramPayload(crash))
-                }
-                context.startActivity(Intent.createChooser(shareIntent, "Enviar reporte sanitizado"))
-                SanitizedCrashReporter.dismissLastCrash()
-            },
-            onDismissClick = {
-                SanitizedCrashReporter.dismissLastCrash()
-            },
-        )
-    }
+    FenixTheme(config = settingsState.accessibilityConfig) {
+        // Diálogo de Crash Sanitizado
+        lastCrash?.let { crash ->
+            SanitizedCrashDialog(
+                crashData = crash,
+                onSendVoluntaryReportClick = {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, SanitizedCrashReporter.formatTelegramPayload(crash))
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Enviar reporte sanitizado"))
+                    SanitizedCrashReporter.dismissLastCrash()
+                },
+                onDismissClick = {
+                    SanitizedCrashReporter.dismissLastCrash()
+                },
+            )
+        }
 
-    Box(modifier = modifier.fillMaxSize()) {
+        Box(modifier = modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
             startDestination = startDestination,
@@ -321,9 +348,18 @@ fun FenixRootNavHost(
                 val ttsState by ttsEngine.playbackState.collectAsState()
                 SettingsScreen(
                     state = state,
-                    onSelectThemeMode = settingsViewModel::onSelectThemeMode,
-                    onToggleOpenDyslexicFont = settingsViewModel::onToggleOpenDyslexicFont,
-                    onSelectTouchTargetProfile = settingsViewModel::onSelectTouchTargetProfile,
+                    onSelectThemeMode = { mode ->
+                        settingsViewModel.onSelectThemeMode(mode)
+                        accessibilityPrefs.edit().putString("theme_mode", mode.name).apply()
+                    },
+                    onToggleOpenDyslexicFont = { enabled ->
+                        settingsViewModel.onToggleOpenDyslexicFont(enabled)
+                        accessibilityPrefs.edit().putBoolean("open_dyslexic", enabled).apply()
+                    },
+                    onSelectTouchTargetProfile = { profile ->
+                        settingsViewModel.onSelectTouchTargetProfile(profile)
+                        accessibilityPrefs.edit().putString("touch_profile", profile.name).apply()
+                    },
                     onToggleAnonymousTelemetryConsent = settingsViewModel::onToggleAnonymousTelemetryConsent,
                     onOpenByokVault = { navController.navigate(FenixDestinations.P04_BYOK_VAULT) },
                     currentPitch = ttsState.pitch,
@@ -491,6 +527,7 @@ fun FenixRootNavHost(
                     onDismissToast = communityViewModel::onDismissToastFeedback,
                 )
             }
+        }
         }
     }
 }
