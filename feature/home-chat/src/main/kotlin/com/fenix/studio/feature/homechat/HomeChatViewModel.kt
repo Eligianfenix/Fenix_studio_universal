@@ -109,12 +109,24 @@ class HomeChatViewModel(
         }
     }
 
+    fun onVoiceProcessingStarted() {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(
+                    promptText = "Enviando audio...",
+                    isVoiceListening = false,
+                    isVoiceProcessing = true,
+                    audioRmsDb = 0f,
+                ),
+            )
+        }
+    }
+
     fun onVoicePartialTranscription(partialText: String) {
         _uiState.update { current ->
             current.copy(
                 chatInputState = current.chatInputState.copy(
                     promptText = partialText,
-                    isVoiceListening = true,
                 ),
             )
         }
@@ -126,6 +138,7 @@ class HomeChatViewModel(
                 chatInputState = current.chatInputState.copy(
                     promptText = "",
                     isVoiceListening = false,
+                    isVoiceProcessing = false,
                     audioRmsDb = 0f,
                 ),
             )
@@ -137,7 +150,8 @@ class HomeChatViewModel(
             current.copy(
                 chatInputState = current.chatInputState.copy(
                     promptText = transcribedText,
-                    isVoiceListening = true,
+                    isVoiceListening = false,
+                    isVoiceProcessing = false,
                     audioRmsDb = 0f,
                 ),
             )
@@ -246,7 +260,12 @@ class HomeChatViewModel(
             )
             state.copy(
                 messages = state.messages + listOf(userMsg, aiMsg),
-                chatInputState = state.chatInputState.copy(promptText = ""),
+                chatInputState = state.chatInputState.copy(
+                    promptText = "",
+                    isVoiceListening = false,
+                    isVoiceProcessing = false,
+                    audioRmsDb = 0f,
+                ),
             )
         }
     }

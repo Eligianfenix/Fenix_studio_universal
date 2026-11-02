@@ -78,6 +78,7 @@ data class UniversalChatInputUiState(
     val isStreamingResponse: Boolean = false,
     val isLsaQuickAccessEnabled: Boolean = true,
     val isVoiceListening: Boolean = false,
+    val isVoiceProcessing: Boolean = false,
     val audioRmsDb: Float = 0f,
     val cooldownState: EmpathicCooldownUiState? = null,
 ) {
@@ -130,6 +131,7 @@ data class UniversalChatInputUiState(
 @Composable
 fun AudioWaveformTracker(
     rmsDb: Float,
+    isProcessing: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val colors = FenixTheme.colors
@@ -148,7 +150,10 @@ fun AudioWaveformTracker(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = colors.background,
-        border = BorderStroke(colors.borderStrokeWidth, Color(0xFF22C55E).copy(alpha = 0.6f)),
+        border = BorderStroke(
+            colors.borderStrokeWidth,
+            if (isProcessing) colors.primary.copy(alpha = 0.6f) else Color(0xFF22C55E).copy(alpha = 0.6f),
+        ),
     ) {
         Row(
             modifier = Modifier
@@ -165,12 +170,12 @@ fun AudioWaveformTracker(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFEF4444)),
+                        .background(if (isProcessing) colors.primary else Color(0xFFEF4444)),
                 )
                 Text(
-                    text = "Grabando audio...",
+                    text = if (isProcessing) "Enviando audio..." else "Grabando audio...",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color(0xFF22C55E),
+                    color = if (isProcessing) colors.primary else Color(0xFF22C55E),
                 )
             }
 
@@ -179,7 +184,7 @@ fun AudioWaveformTracker(
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val clampedRms = ((rmsDb + 2f) / 10f).coerceIn(0.15f, 1f)
+                val clampedRms = if (isProcessing) 0.5f else ((rmsDb + 2f) / 10f).coerceIn(0.15f, 1f)
                 for (i in 0 until 16) {
                     val sinFactor = kotlin.math.sin(phase + (i * 0.45f)).toFloat()
                     val normalizedFactor = ((sinFactor + 1f) / 2f) * 0.6f + 0.4f
@@ -189,7 +194,7 @@ fun AudioWaveformTracker(
                             .width(3.dp)
                             .height(heightDp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(if (i % 2 == 0) Color(0xFF22C55E) else colors.primary),
+                            .background(if (isProcessing) colors.primary else if (i % 2 == 0) Color(0xFF22C55E) else colors.primary),
                     )
                 }
             }
@@ -234,9 +239,10 @@ fun UniversalAIChatInput(
         }
 
         // Pista de audio ubicada ARRIBA y FUERA de la caja de texto (altura fija de 44.dp para evitar rebotes)
-        if (state.isVoiceListening) {
+        if (state.isVoiceListening || state.isVoiceProcessing) {
             AudioWaveformTracker(
                 rmsDb = state.audioRmsDb,
+                isProcessing = state.isVoiceProcessing,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp)

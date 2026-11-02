@@ -159,7 +159,7 @@ class VoiceToTextEngine(
                 // Inferencia offline con Whisper
                 val recognizer = whisperRecognizer
                 if (recognizer != null && recordedSamples.isNotEmpty()) {
-                    mainHandler.post { onPartialResult?.invoke("Transcribiendo con Whisper local...") }
+                    mainHandler.post { onPartialResult?.invoke("Enviando audio...") }
                     val stream = recognizer.createStream()
                     stream.acceptWaveform(recordedSamples.toFloatArray(), sampleRate)
                     recognizer.decode(stream)

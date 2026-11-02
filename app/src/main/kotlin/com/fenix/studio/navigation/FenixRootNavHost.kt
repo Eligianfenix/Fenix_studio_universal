@@ -323,7 +323,14 @@ fun FenixRootNavHost(
                 HomeChatScreen(
                     state = state,
                     onPromptTextChange = homeChatViewModel::onPromptChanged,
-                    onSendPromptClick = { homeChatViewModel.onSubmitPrompt() },
+                    onSendPromptClick = {
+                        if (state.chatInputState.isVoiceListening) {
+                            homeChatViewModel.onVoiceProcessingStarted()
+                            voiceToTextEngine.stopListening()
+                        } else {
+                            homeChatViewModel.onSubmitPrompt()
+                        }
+                    },
                     onAttachMaterialClick = { navController.navigate(FenixDestinations.P05_PROCESSOR_CONFIG) },
                     onToggleLsaClick = { lsaEngine.toggleOverlayVisibility() },
                     onAutoRetryTriggered = { homeChatViewModel.onSubmitPrompt() },
@@ -345,8 +352,8 @@ fun FenixRootNavHost(
                     onVoiceInputClick = {
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                             if (state.chatInputState.isVoiceListening) {
-                                // Tocar el micrófono verde finaliza la grabación; Whisper decodifica y envía
-                                homeChatViewModel.onVoiceListeningChanged(false)
+                                // Tocar el micrófono verde finaliza la grabación; activa estado "Enviando audio..." y decodifica
+                                homeChatViewModel.onVoiceProcessingStarted()
                                 voiceToTextEngine.stopListening()
                             } else {
                                 promptBackupBeforeVoice = state.chatInputState.promptText
@@ -356,6 +363,8 @@ fun FenixRootNavHost(
                                         if (text.isNotBlank()) {
                                             homeChatViewModel.onVoiceTranscriptionReceived(text)
                                             homeChatViewModel.onSubmitPrompt()
+                                        } else {
+                                            homeChatViewModel.onCancelVoiceRecording()
                                         }
                                     },
                                     onPartialResult = { partial ->
@@ -365,7 +374,7 @@ fun FenixRootNavHost(
                                         homeChatViewModel.onAudioRmsChanged(rms)
                                     },
                                     onError = {
-                                        homeChatViewModel.onVoiceListeningChanged(false)
+                                        homeChatViewModel.onCancelVoiceRecording()
                                     },
                                 )
                             }

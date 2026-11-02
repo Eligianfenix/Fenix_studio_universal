@@ -91,25 +91,37 @@ class HomeChatAndOtaGuardTest {
     fun `HomeChatViewModel manages voice listening state and appends voice transcription to prompt`() {
         val viewModel = HomeChatViewModel()
         assertFalse(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceProcessing)
 
+        // Inicio de escucha
         viewModel.onVoiceListeningChanged(true)
         assertTrue(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceProcessing)
 
+        // Al enviar audio pasa a estado de procesamiento
+        viewModel.onVoiceProcessingStarted()
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertTrue(viewModel.uiState.value.chatInputState.isVoiceProcessing)
+        assertEquals("Enviando audio...", viewModel.uiState.value.chatInputState.promptText)
+
+        // Al completarse la transcripción, el estado de voz se apaga y se fija el texto
         viewModel.onVoiceTranscriptionReceived("Consulta sobre resumen académico")
-        assertTrue(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceProcessing)
         assertEquals("Consulta sobre resumen académico", viewModel.uiState.value.chatInputState.promptText)
 
-        // Verificamos que si habla nuevamente continúa actualizando la transcripción acumulada
-        viewModel.onVoiceTranscriptionReceived("Consulta sobre resumen académico y bibliografía obligatoria")
-        assertEquals("Consulta sobre resumen académico y bibliografía obligatoria", viewModel.uiState.value.chatInputState.promptText)
-        assertTrue(viewModel.uiState.value.chatInputState.isVoiceListening)
+        // Al enviar el prompt, se limpia completamente la caja y se mantiene en estado inicial
+        viewModel.onSubmitPrompt()
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceProcessing)
+        assertEquals("", viewModel.uiState.value.chatInputState.promptText)
 
-        // Cancelar grabación restaura el texto previo o limpia
+        // Cancelar grabación restaura el estado limpio
         viewModel.onPromptChanged("Texto previo")
         viewModel.onVoiceListeningChanged(true)
-        viewModel.onVoicePartialTranscription("Texto descartado")
         viewModel.onCancelVoiceRecording()
         assertFalse(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceProcessing)
         assertEquals("", viewModel.uiState.value.chatInputState.promptText)
     }
 }
