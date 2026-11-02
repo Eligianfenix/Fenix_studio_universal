@@ -27,12 +27,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -224,6 +228,9 @@ fun UniversalAIChatInput(
     val colors = FenixTheme.colors
     val typography = MaterialTheme.typography
     var isPlusMenuExpanded by remember { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+    val scrollState = rememberScrollState()
+    val maxTextFieldHeight = (configuration.screenHeightDp * 0.35f).dp.coerceIn(100.dp, 280.dp)
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -251,7 +258,9 @@ fun UniversalAIChatInput(
         }
 
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = (configuration.screenHeightDp * 0.50f).dp),
             shape = RoundedCornerShape(20.dp),
             color = colors.surface,
             contentColor = colors.onSurface,
@@ -287,26 +296,33 @@ fun UniversalAIChatInput(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Campo de texto principal sin bordes duros internos
-                BasicTextField(
-                    value = state.promptText,
-                    onValueChange = onPromptTextChange,
+                // Campo de texto principal con límite de altura y scroll vertical interno
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    textStyle = typography.bodyLarge.copy(color = colors.onSurface),
-                    cursorBrush = SolidColor(colors.primary),
-                    decorationBox = { innerTextField ->
-                        if (state.promptText.isEmpty()) {
-                            Text(
-                                text = if (state.isVoiceListening) "Escuchando tu voz..." else "Pregunta o profundiza sobre tu cátedra...",
-                                style = typography.bodyLarge,
-                                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-                            )
-                        }
-                        innerTextField()
-                    },
-                )
+                        .heightIn(min = 36.dp, max = maxTextFieldHeight)
+                        .verticalScroll(scrollState),
+                ) {
+                    BasicTextField(
+                        value = state.promptText,
+                        onValueChange = onPromptTextChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        textStyle = typography.bodyLarge.copy(color = colors.onSurface),
+                        cursorBrush = SolidColor(colors.primary),
+                        decorationBox = { innerTextField ->
+                            if (state.promptText.isEmpty()) {
+                                Text(
+                                    text = if (state.isVoiceListening) "Escuchando tu voz..." else "Pregunta o profundiza sobre tu cátedra...",
+                                    style = typography.bodyLarge,
+                                    color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+                                )
+                            }
+                            innerTextField()
+                        },
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
