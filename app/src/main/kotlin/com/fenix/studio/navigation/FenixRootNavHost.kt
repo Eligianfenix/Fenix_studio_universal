@@ -77,6 +77,7 @@ import com.fenix.studio.feature.processor.ProcessingMonitorScreen
 import com.fenix.studio.feature.processor.ProcessorConfigScreen
 import com.fenix.studio.feature.processor.ProcessorViewModel
 import com.fenix.studio.feature.settings.ByokVaultScreen
+import com.fenix.studio.feature.settings.GetCreditsScreen
 import com.fenix.studio.feature.settings.SettingsAndByokVaultViewModel
 import com.fenix.studio.feature.settings.SettingsScreen
 
@@ -88,6 +89,7 @@ object FenixDestinations {
     const val P02_HOME_CHAT = "p02_home_chat"
     const val P03_SETTINGS = "p03_settings"
     const val P04_BYOK_VAULT = "p04_byok_vault"
+    const val P04B_GET_CREDITS = "p04b_get_credits"
     const val P05_PROCESSOR_CONFIG = "p05_processor_config"
     const val P05B_CURRICULAR_MATRIX = "p05b_curricular_matrix"
     const val P06_PROCESSING_MONITOR = "p06_processing_monitor"
@@ -256,8 +258,8 @@ fun FenixRootNavHost(
                         when (destination) {
                             FenixHubDestination.P02_HOME_CHAT -> {}
                             FenixHubDestination.P03_SETTINGS -> navController.navigate(FenixDestinations.P03_SETTINGS)
-                            FenixHubDestination.P04_BYOK_VAULT,
-                            FenixHubDestination.GET_CREDITS -> navController.navigate(FenixDestinations.P04_BYOK_VAULT)
+                            FenixHubDestination.P04_BYOK_VAULT -> navController.navigate(FenixDestinations.P04_BYOK_VAULT)
+                            FenixHubDestination.GET_CREDITS -> navController.navigate(FenixDestinations.P04B_GET_CREDITS)
                             FenixHubDestination.P05_PROCESSOR -> navController.navigate(FenixDestinations.P05_PROCESSOR_CONFIG)
                             FenixHubDestination.P07_CLASSROOMS -> navController.navigate(FenixDestinations.P07_CLASSROOMS)
                             FenixHubDestination.P09_FENIX_DOCS -> navController.navigate(FenixDestinations.P09_FENIX_DOCS)
@@ -394,6 +396,13 @@ fun FenixRootNavHost(
                     state = state,
                     onRemoveSlot = { slotIndex -> settingsViewModel.onRemoveByokKeySlot("fenix_ia", slotIndex) },
                     onDiscoverModelsClick = { /* noop */ },
+                )
+            }
+
+            // P-04b Conseguir Créditos
+            composable(FenixDestinations.P04B_GET_CREDITS) {
+                GetCreditsScreen(
+                    onBackClick = { navController.popBackStack() },
                 )
             }
 

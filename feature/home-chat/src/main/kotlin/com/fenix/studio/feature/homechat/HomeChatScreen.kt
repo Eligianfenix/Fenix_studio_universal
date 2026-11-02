@@ -284,6 +284,13 @@ fun HomeChatScreen(
                             },
                         )
                         DrawerNavigationItem(
+                            label = "🔑 Configurar API Keys",
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                onNavigateToDestination(FenixHubDestination.P04_BYOK_VAULT)
+                            },
+                        )
+                        DrawerNavigationItem(
                             label = "⚙️ Ajustes y Accesibilidad",
                             onClick = {
                                 scope.launch { drawerState.close() }
@@ -901,8 +908,15 @@ private fun EmptyStateWelcomeCanvas(
             ModuleQuickCard(
                 icon = "⚡",
                 title = "Conseguir Créditos",
-                description = "Amplía tu capacidad de procesamiento con llaves gratuitas o el programa colaborador.",
+                description = "Amplía tus capacidades de procesamiento académico.",
                 onClick = { onNavigateToDestination(FenixHubDestination.GET_CREDITS) },
+            )
+
+            ModuleQuickCard(
+                icon = "🔑",
+                title = "Configurar API Keys",
+                description = "Administra tus propias llaves de inteligencia artificial en tu bóveda privada.",
+                onClick = { onNavigateToDestination(FenixHubDestination.P04_BYOK_VAULT) },
             )
         }
 
