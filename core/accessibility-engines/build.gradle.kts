@@ -48,6 +48,7 @@ tasks.withType<Test> {
 }
 
 dependencies {
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
     implementation(project(":core:designsystem"))
     implementation(project(":core:database"))
 

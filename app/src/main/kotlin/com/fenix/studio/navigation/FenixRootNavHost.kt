@@ -345,18 +345,18 @@ fun FenixRootNavHost(
                     onVoiceInputClick = {
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                             if (state.chatInputState.isVoiceListening) {
-                                // Tocar el micrófono verde finaliza la grabación y envía el audio transcripto de inmediato
-                                voiceToTextEngine.stopListening()
+                                // Tocar el micrófono verde finaliza la grabación; Whisper decodifica y envía
                                 homeChatViewModel.onVoiceListeningChanged(false)
-                                if (state.chatInputState.promptText.isNotBlank()) {
-                                    homeChatViewModel.onSubmitPrompt()
-                                }
+                                voiceToTextEngine.stopListening()
                             } else {
                                 promptBackupBeforeVoice = state.chatInputState.promptText
                                 homeChatViewModel.onVoiceListeningChanged(true)
                                 voiceToTextEngine.startListening(
                                     onResult = { text ->
-                                        homeChatViewModel.onVoiceTranscriptionReceived(text)
+                                        if (text.isNotBlank()) {
+                                            homeChatViewModel.onVoiceTranscriptionReceived(text)
+                                            homeChatViewModel.onSubmitPrompt()
+                                        }
                                     },
                                     onPartialResult = { partial ->
                                         homeChatViewModel.onVoicePartialTranscription(partial)
@@ -374,7 +374,7 @@ fun FenixRootNavHost(
                         }
                     },
                     onCancelVoiceClick = {
-                        voiceToTextEngine.stopListening()
+                        voiceToTextEngine.cancel()
                         homeChatViewModel.onCancelVoiceRecording()
                     },
                     onNewConversationClick = homeChatViewModel::onNewChatSession,
