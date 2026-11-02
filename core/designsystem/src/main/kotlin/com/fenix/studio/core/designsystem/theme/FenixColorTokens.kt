@@ -73,26 +73,31 @@ object FenixPalettes {
         cooldownAccent = Color(0xFF92400E),
     )
 
+    /**
+     * Paleta Oscura Estilizada "Obsidiana Volcánica y Brasa Fénix" (Por defecto en toda la app).
+     * Diseñada para acompañar la identidad de fuego del Fénix sin usar negro plano común (#000000),
+     * garantizando contraste WCAG 2.2 AAA (>= 7.0:1).
+     */
     val DarkAAA = FenixSemanticColors(
-        background = Color(0xFF0B0F19),
-        surface = Color(0xFF111827),
-        onBackground = Color(0xFFF8FAFC),
-        onSurface = Color(0xFFF8FAFC),
-        onSurfaceVariant = Color(0xFFCBD5E1),
-        primary = Color(0xFF93C5FD),
-        onPrimary = Color(0xFF050811),
-        error = Color(0xFFFCA5A5),
-        outline = Color(0xFF94A3B8),
+        background = Color(0xFF0C0908), // Obsidiana Volcánica Profunda
+        surface = Color(0xFF171210), // Carbón Basáltico Estilizado para paneles, tarjetas y barras
+        onBackground = Color(0xFFFAF5F0), // Marfil Cálido (> 17:1)
+        onSurface = Color(0xFFFAF5F0), // Marfil Cálido (> 15:1)
+        onSurfaceVariant = Color(0xFFD7C6B8), // Ceniza Platino Cálida (> 9.5:1)
+        primary = Color(0xFFFF9800), // Ámbar Fuego Fénix (> 8.8:1 sobre fondo)
+        onPrimary = Color(0xFF0C0908), // Texto obsidiana sobre botón ámbar (> 8.8:1)
+        error = Color(0xFFFF8A80), // Coral Incandescente (> 8.0:1)
+        outline = Color(0xFF4A3325), // Bronce Brasa Oscuro para bordes de tarjetas y paneles
         borderStrokeWidth = 1.dp,
-        propositionPrimaryTheoryAccent = PropositionBlue,
-        propositionPrimaryTheoryContainer = Color(0xFF0F1D33),
-        onPropositionPrimaryTheoryContainer = Color(0xFFF8FAFC),
-        propositionComplementaryAccent = PropositionAmber,
-        propositionComplementaryContainer = Color(0xFF26170A),
-        onPropositionComplementaryContainer = Color(0xFFF8FAFC),
-        cooldownContainer = Color(0xFF231B0C),
-        onCooldownContainer = Color(0xFFFEF3C7),
-        cooldownAccent = Color(0xFFFBBF24),
+        propositionPrimaryTheoryAccent = Color(0xFFFF9100), // Fuego Naranja Intenso
+        propositionPrimaryTheoryContainer = Color(0xFF1F140E), // Panel Obsidiana-Ámbar
+        onPropositionPrimaryTheoryContainer = Color(0xFFFAF5F0),
+        propositionComplementaryAccent = Color(0xFFFFB74D), // Oro Brasa Suave
+        propositionComplementaryContainer = Color(0xFF26180E), // Panel Caoba Volcánico
+        onPropositionComplementaryContainer = Color(0xFFFAF5F0),
+        cooldownContainer = Color(0xFF24170B),
+        onCooldownContainer = Color(0xFFFFECB3),
+        cooldownAccent = Color(0xFFFFB300),
     )
 
     val HighContrastOledAAA = FenixSemanticColors(

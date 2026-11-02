@@ -36,7 +36,7 @@ enum class FenixTouchTargetProfile(val minSize: Dp) {
  */
 @Immutable
 data class FenixAccessibilityConfig(
-    val themeMode: FenixThemeMode = FenixThemeMode.LIGHT,
+    val themeMode: FenixThemeMode = FenixThemeMode.DARK,
     val useOpenDyslexicFont: Boolean = false,
     val touchTargetProfile: FenixTouchTargetProfile = FenixTouchTargetProfile.STANDARD,
     val fontScaleMultiplier: Float = 1.0f,

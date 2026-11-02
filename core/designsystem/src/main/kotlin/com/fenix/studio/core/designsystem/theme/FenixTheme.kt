@@ -18,9 +18,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 
-val LocalFenixThemeMode = staticCompositionLocalOf { FenixThemeMode.LIGHT }
+val LocalFenixThemeMode = staticCompositionLocalOf { FenixThemeMode.DARK }
 
-val LocalFenixColors = staticCompositionLocalOf { FenixPalettes.LightAAA }
+val LocalFenixColors = staticCompositionLocalOf { FenixPalettes.DarkAAA }
 
 val LocalFenixAccessibilityConfig = staticCompositionLocalOf { FenixAccessibilityConfig() }
 
@@ -60,12 +60,20 @@ private fun FenixSemanticColors.toMaterialColorScheme(mode: FenixThemeMode): Col
         FenixThemeMode.DARK, FenixThemeMode.HIGH_CONTRAST_OLED -> darkColorScheme(
             primary = primary,
             onPrimary = onPrimary,
+            primaryContainer = propositionPrimaryTheoryContainer,
+            onPrimaryContainer = onPropositionPrimaryTheoryContainer,
+            secondary = propositionComplementaryAccent,
+            onSecondary = onPrimary,
+            secondaryContainer = surface,
+            onSecondaryContainer = onSurface,
             background = background,
             onBackground = onBackground,
             surface = surface,
             onSurface = onSurface,
+            surfaceVariant = surface,
             onSurfaceVariant = onSurfaceVariant,
             error = error,
+            onError = onPrimary,
             outline = outline,
         )
     }
