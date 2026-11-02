@@ -70,15 +70,15 @@ class VoiceToTextEngine(
     private suspend fun initWhisperSafely(): Boolean = withContext(Dispatchers.IO) {
         try {
             val whisperConfig = OfflineWhisperModelConfig(
-                encoder = "models/whisper/tiny-encoder.int8.onnx",
-                decoder = "models/whisper/tiny-decoder.int8.onnx",
+                encoder = "models/whisper/base-encoder.int8.onnx",
+                decoder = "models/whisper/base-decoder.int8.onnx",
                 language = "es",
                 task = "transcribe",
                 tailPaddings = 1000,
             )
             val modelConfig = OfflineModelConfig(
                 whisper = whisperConfig,
-                tokens = "models/whisper/tiny-tokens.txt",
+                tokens = "models/whisper/base-tokens.txt",
                 numThreads = 4,
                 debug = false,
                 provider = "cpu",
@@ -111,7 +111,7 @@ class VoiceToTextEngine(
         val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         val audioRecord = try {
             AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                MediaRecorder.AudioSource.MIC,
                 sampleRate,
                 channelConfig,
                 audioFormat,
@@ -176,7 +176,9 @@ class VoiceToTextEngine(
                     val resultText = try {
                         stream.acceptWaveform(samples, sampleRate)
                         recognizer.decode(stream)
-                        recognizer.getResult(stream).text.trim()
+                        val text = recognizer.getResult(stream).text.trim()
+                        android.util.Log.d("FenixVoice", "Whisper-Base transcribed: '$text' (samples=${samples.size})")
+                        text
                     } finally {
                         stream.release()
                     }
