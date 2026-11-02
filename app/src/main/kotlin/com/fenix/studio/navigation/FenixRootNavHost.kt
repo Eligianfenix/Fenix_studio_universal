@@ -348,15 +348,7 @@ fun FenixRootNavHost(
                     },
                     onCopyMessageClick = { /* noop */ },
                     onRetryRotatingKeyClick = { /* noop */ },
-                    onSpeakMessageClick = { msg ->
-                        val hasAzureKey = !ttsEngine.preferences?.getAzureKey().isNullOrBlank()
-                        val useDefaultOnly = ttsEngine.preferences?.isUseDeviceDefaultOnly() == true
-                        if (!hasAzureKey && !useDefaultOnly) {
-                            homeChatViewModel.onShowMissingAzureTtsDialog(true, msg.text)
-                        } else {
-                            ttsEngine.speak(msg.text)
-                        }
-                    },
+                    onSpeakMessageClick = { msg -> ttsEngine.speak(msg.text) },
                     onVoiceInputClick = {
                         if (!voiceToTextEngine.hasApiKey()) {
                             homeChatViewModel.onShowMissingGroqKeyDialog(true)
