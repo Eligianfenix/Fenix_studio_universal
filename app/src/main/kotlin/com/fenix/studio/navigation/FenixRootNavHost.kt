@@ -31,16 +31,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,7 +55,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.fenix.studio.core.accessibility.lsa.LsaInteractionMode
+import com.fenix.studio.core.accessibility.lsa.LsaFloatingPipOverlay
 import com.fenix.studio.core.accessibility.lsa.LsaSignLanguagePipEngine
 import com.fenix.studio.core.accessibility.tts.HybridTtsEngine
 import com.fenix.studio.core.designsystem.modifiers.fenixMinTouchTarget
@@ -178,182 +175,6 @@ fun FenixRootNavHost(
 
     // Guardián de fallos sanitizado
     val lastCrash by SanitizedCrashReporter.lastCrashFlow.collectAsState()
-
-    // Intérprete Interactivo de Lengua de Señas Argentina (LSA)
-    if (lsaState.isOverlayVisible) {
-        var customLsaInput by remember { mutableStateOf("") }
-        var isAutoPlayingLsa by remember { mutableStateOf(true) }
-
-        LaunchedEffect(isAutoPlayingLsa, lsaState.currentGloss, lsaState.pendingGlossQueue.size) {
-            val activeGloss = lsaState.currentGloss
-            if (isAutoPlayingLsa && activeGloss != null && lsaState.pendingGlossQueue.size > 1) {
-                kotlinx.coroutines.delay(activeGloss.durationMs.coerceAtLeast(900L))
-                lsaEngine.advanceToNextGloss()
-            } else if (lsaState.pendingGlossQueue.size <= 1) {
-                isAutoPlayingLsa = false
-            }
-        }
-
-        AlertDialog(
-            onDismissRequest = { lsaEngine.toggleOverlayVisibility() },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "🤟 Intérprete LSA Argentino",
-                        style = typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = colors.primary,
-                    )
-                    Text(
-                        text = if (lsaState.pendingGlossQueue.isNotEmpty()) {
-                            "Restantes: ${lsaState.pendingGlossQueue.size}"
-                        } else {
-                            "Listo"
-                        },
-                        style = typography.labelSmall,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Selector de modo LSA
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        LsaInteractionMode.entries.forEach { mode ->
-                            val selected = lsaState.activeMode == mode
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (selected) colors.primary else colors.background)
-                                    .border(1.dp, if (selected) colors.primary else colors.outline, RoundedCornerShape(6.dp))
-                                    .clickable { lsaEngine.setInteractionMode(mode) }
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = mode.displayLabel.replace("Modo ", ""),
-                                    style = typography.labelSmall,
-                                    color = if (selected) colors.onPrimary else colors.onSurface,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
-                    }
-
-                    lsaState.currentGloss?.let { gloss ->
-                        val isFingerspelling = gloss.glossCode.startsWith("LSA_DACTILOLOGIA_")
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(colors.background)
-                                .border(2.dp, colors.primary, RoundedCornerShape(12.dp))
-                                .padding(14.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                text = if (isFingerspelling) "🖐️➔🔤" else "🤟🧑‍🏫",
-                                style = typography.headlineLarge,
-                            )
-                            Text(
-                                text = gloss.spanishEquivalent.uppercase(),
-                                style = typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                color = colors.primary,
-                            )
-                            Text(
-                                text = if (isFingerspelling) "Dactilología término a término" else "Glosa Léxica LSA",
-                                style = typography.labelSmall,
-                                color = colors.onSurfaceVariant,
-                            )
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(3.dp),
-                            ) {
-                                Text("• Mano: ${gloss.handShape}", style = typography.bodySmall, color = colors.onSurface)
-                                Text("• Palma: ${gloss.palmOrientation}", style = typography.bodySmall, color = colors.onSurface)
-                                Text("• Punto: ${gloss.articulationPoint}", style = typography.bodySmall, color = colors.onSurface)
-                                Text("• Movimiento: ${gloss.movementPath}", style = typography.bodySmall, color = colors.onSurface)
-                                Text("• Rasgo no manual: ${gloss.nonManualExpression}", style = typography.bodySmall, color = colors.onSurfaceVariant)
-                            }
-                        }
-                    } ?: Text(
-                        text = "Escribe una frase abajo o toca 'Traducir Chat Actual' para iniciar la interpretación en Lengua de Señas Argentina.",
-                        style = typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Button(
-                            onClick = { isAutoPlayingLsa = !isAutoPlayingLsa },
-                            modifier = Modifier.weight(1f),
-                            enabled = lsaState.pendingGlossQueue.size > 1,
-                        ) {
-                            Text(
-                                text = if (isAutoPlayingLsa) "⏸ Pausar" else "▶ Reproducir",
-                                style = typography.labelSmall,
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                isAutoPlayingLsa = false
-                                lsaEngine.advanceToNextGloss()
-                            },
-                            modifier = Modifier.weight(1f),
-                            enabled = lsaState.pendingGlossQueue.isNotEmpty(),
-                        ) {
-                            Text("⏭ Siguiente", style = typography.labelSmall)
-                        }
-                    }
-
-                    androidx.compose.material3.OutlinedTextField(
-                        value = customLsaInput,
-                        onValueChange = { customLsaInput = it },
-                        placeholder = { Text("Escribe texto para traducir a LSA...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Button(
-                            onClick = {
-                                val textToTranslate = customLsaInput.ifBlank {
-                                    homeChatViewModel.uiState.value.messages.lastOrNull()?.text
-                                        ?: "Hola clase vamos a estudiar y comprender en la universidad"
-                                }
-                                lsaEngine.translateSpanishToLsaGlosses(textToTranslate)
-                                isAutoPlayingLsa = true
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(
-                                text = if (customLsaInput.isBlank()) "Traducir Chat Actual" else "Traducir Frase",
-                                style = typography.labelSmall,
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = { lsaEngine.toggleOverlayVisibility() }) {
-                    Text("Cerrar")
-                }
-            },
-        )
-    }
 
     // Diálogo de Crash Sanitizado
     lastCrash?.let { crash ->
@@ -696,7 +517,8 @@ fun FenixRootNavHost(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 16.dp, end = 16.dp),
+                    .statusBarsPadding()
+                    .padding(top = 8.dp, end = 16.dp),
             ) {
                 Row(
                     modifier = Modifier
@@ -716,6 +538,59 @@ fun FenixRootNavHost(
                     )
                 }
             }
+        }
+
+        // Ventana Flotante PiP No Bloqueante con Avatar Cinético 2.5D LSA (MF-10.3)
+        if (lsaState.isOverlayVisible) {
+            val homeState by homeChatViewModel.uiState.collectAsState()
+            LsaFloatingPipOverlay(
+                lsaState = lsaState,
+                isVoiceListening = homeState.chatInputState.isVoiceListening,
+                onSelectMode = { lsaEngine.setInteractionMode(it) },
+                onTranslateText = { textToTranslate ->
+                    val resolvedText = textToTranslate.ifBlank {
+                        homeChatViewModel.uiState.value.messages.lastOrNull()?.text
+                            ?: "Hola clase vamos a estudiar y comprender en la universidad"
+                    }
+                    lsaEngine.translateSpanishToLsaGlosses(resolvedText)
+                },
+                onAdvanceNextGloss = { lsaEngine.advanceToNextGloss() },
+                onRestartSequence = { lsaEngine.restartSequence() },
+                onToggleLiveMicClick = {
+                    if (homeState.chatInputState.isVoiceListening) {
+                        voiceToTextEngine.stopListening()
+                        homeChatViewModel.onVoiceListeningChanged(false)
+                    } else if (
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        homeChatViewModel.onVoiceListeningChanged(true)
+                        voiceToTextEngine.startListening(
+                            onResult = { spoken ->
+                                homeChatViewModel.onVoiceListeningChanged(false)
+                                if (spoken.isNotBlank()) {
+                                    lsaEngine.translateSpanishToLsaGlosses(spoken)
+                                }
+                            },
+                            onPartialResult = { partial ->
+                                if (partial.isNotBlank()) {
+                                    lsaEngine.translateSpanishToLsaGlosses(partial)
+                                }
+                            },
+                            onRmsChanged = { rms -> homeChatViewModel.onAudioRmsChanged(rms) },
+                            onError = { homeChatViewModel.onVoiceListeningChanged(false) },
+                        )
+                    } else {
+                        recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                onSpeakAloudForDeafUser = { textToSpeak ->
+                    ttsEngine.speak(textToSpeak)
+                },
+                onCloseOverlay = { lsaEngine.toggleOverlayVisibility() },
+            )
         }
     }
 }
