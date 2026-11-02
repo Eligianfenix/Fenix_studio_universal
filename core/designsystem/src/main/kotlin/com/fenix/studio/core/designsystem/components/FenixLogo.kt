@@ -161,11 +161,11 @@ fun FenixEmberSplashOverlay(
             List(140) {
                 EmberParticle(
                     angleRad = rng.nextFloat() * 6.2831855f,
-                    speedFactor = 0.45f + rng.nextFloat() * 0.95f,
+                    speedFactor = 0.10f + rng.nextFloat() * 0.18f,
                     phaseOffset = rng.nextFloat(),
-                    radiusPx = 2.5f + rng.nextFloat() * 6.5f,
-                    swayAmp = 6f + rng.nextFloat() * 18f,
-                    swayFreq = 2f + rng.nextFloat() * 5f,
+                    radiusPx = 2.2f + rng.nextFloat() * 5.2f,
+                    swayAmp = 4f + rng.nextFloat() * 12f,
+                    swayFreq = 0.6f + rng.nextFloat() * 1.2f,
                     colorType = rng.nextInt(4),
                 )
             }
@@ -237,7 +237,7 @@ fun FenixEmberSplashOverlay(
                     val px = cx + cos(p.angleRad) * dist + cos(perpAngle) * sway
                     val py = cy + sin(p.angleRad) * dist + sin(perpAngle) * sway
 
-                    val prevDist = (dist - 18f * p.speedFactor).coerceAtLeast(innerSpawnRadius)
+                    val prevDist = (dist - 10f).coerceAtLeast(innerSpawnRadius)
                     val tailX = cx + cos(p.angleRad) * prevDist + cos(perpAngle) * sway * 0.85f
                     val tailY = cy + sin(p.angleRad) * prevDist + sin(perpAngle) * sway * 0.85f
 

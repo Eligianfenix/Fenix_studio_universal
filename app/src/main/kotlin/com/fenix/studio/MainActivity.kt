@@ -3,7 +3,7 @@
  * PROYECTO: FÉNIX STUDIO — PLATAFORMA DE ACCESIBILIDAD Y PROCESAMIENTO ACADÉMICO
  * PROPIEDAD INTELECTUAL Y AUTORÍA ORIGINAL: Eli Gian Cortez Leonardi
  * LOCALIDAD: San Juan, Argentina
- * FECHA Y HORA: 2026-11-02 18:19:00 -03:00
+ * FECHA Y HORA: 2026-11-02 18:31:00 -03:00
  * ARCHIVO: app/src/main/kotlin/com/fenix/studio/MainActivity.kt
  * ================================================================================
  */
@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -42,16 +43,24 @@ class MainActivity : ComponentActivity() {
         setContent {
             FenixTheme {
                 var showSplash by rememberSaveable { mutableStateOf(true) }
+                var renderAppContent by remember { mutableStateOf(!showSplash) }
+
                 LaunchedEffect(Unit) {
                     if (showSplash) {
-                        // Espera a que el primer fotograma de la animación esté realmente en pantalla
+                        // Fotograma 1: pinta inmediatamente el Fénix con brasas y letras de fuego
                         withFrameNanos { }
+                        // Fotograma 2: monta el NavHost debajo mientras corre la animación
+                        renderAppContent = true
                         delay(4500L)
                         showSplash = false
+                    } else {
+                        renderAppContent = true
                     }
                 }
                 Box(modifier = Modifier.fillMaxSize()) {
-                    FenixRootNavHost()
+                    if (renderAppContent) {
+                        FenixRootNavHost()
+                    }
                     FenixEmberSplashOverlay(visible = showSplash)
                 }
             }
