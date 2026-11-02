@@ -15,7 +15,9 @@ ARCHIVO: app/src/main/AndroidManifest.xml
     <application
         android:name=".FenixApplication"
         android:allowBackup="false"
-        android:label="Fenix Studio"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="Fénix Studio"
         android:supportsRtl="true"
         android:theme="@style/Theme.FenixStudio">
 

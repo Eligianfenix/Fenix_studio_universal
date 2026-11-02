@@ -318,8 +318,8 @@ fun HomeChatScreen(
                             }
 
                             FenixBrandHeader(
-                                subtitle = "Fénix IA (Gratuito Asistido)",
-                                logoSize = 30.dp,
+                                subtitle = null,
+                                logoSize = 36.dp,
                             )
                         }
                     }
