@@ -26,3 +26,4 @@ Existía riesgo de filtración de documentos estratégicos, propiedad intelectua
 ## 4. Impacto
 - **Blindaje Legal e Intelectual:** La propiedad intelectual del Creador permanece resguardada en almacenamiento desacoplado fuera de Git.
 - **Transparencia Técnica:** El código del framework y la arquitectura multi-módulo pueden ser auditados públicamente sin riesgos de fuga.
+

@@ -51,6 +51,7 @@ tasks.withType<Test> {
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:security-vault"))
+    implementation(project(":core:network-ai"))
     implementation(project(":domain"))
 
     implementation(libs.androidx.core.ktx)

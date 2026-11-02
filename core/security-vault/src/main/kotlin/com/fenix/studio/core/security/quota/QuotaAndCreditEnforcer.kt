@@ -126,6 +126,7 @@ data class RemoteUserPermissionsProfile(
         const val PROGRAM_OFFICIAL_NAME: String = "Programa Fenix Beta Testers"
         const val ROLE_STUDENT_FREE: String = "student_free"
         const val ROLE_BETA_TESTER: String = "beta_tester"
+        const val ROLE_ADMIN: String = "admin"
     }
 }
 

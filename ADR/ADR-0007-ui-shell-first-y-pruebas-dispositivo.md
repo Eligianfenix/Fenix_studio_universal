@@ -26,3 +26,4 @@ Existía riesgo de que agentes de IA implementaran lógica de negocio o integrac
 ## 4. Impacto
 - **Control Total del Producto:** El Creador valida visualmente cada pantalla antes de invertir esfuerzo en el motor subyacente.
 - **Accesibilidad Garantizada:** Se verifica TalkBack, contraste de colores (7:1) y touch targets mínimos de 48dp en hardware real.
+

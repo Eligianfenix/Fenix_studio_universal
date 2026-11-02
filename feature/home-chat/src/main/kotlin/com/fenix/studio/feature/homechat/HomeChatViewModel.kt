@@ -90,6 +90,60 @@ class HomeChatViewModel(
         }
     }
 
+    fun onVoiceListeningChanged(isListening: Boolean) {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(
+                    isVoiceListening = isListening,
+                    audioRmsDb = if (isListening) current.chatInputState.audioRmsDb else 0f,
+                ),
+            )
+        }
+    }
+
+    fun onAudioRmsChanged(rmsDb: Float) {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(audioRmsDb = rmsDb),
+            )
+        }
+    }
+
+    fun onVoicePartialTranscription(partialText: String) {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(
+                    promptText = partialText,
+                    isVoiceListening = true,
+                ),
+            )
+        }
+    }
+
+    fun onCancelVoiceRecording() {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(
+                    promptText = "",
+                    isVoiceListening = false,
+                    audioRmsDb = 0f,
+                ),
+            )
+        }
+    }
+
+    fun onVoiceTranscriptionReceived(transcribedText: String) {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(
+                    promptText = transcribedText,
+                    isVoiceListening = true,
+                    audioRmsDb = 0f,
+                ),
+            )
+        }
+    }
+
     fun onSelectActiveClassroom(classroomId: String?) {
         _uiState.update { it.copy(selectedClassroomId = classroomId) }
     }

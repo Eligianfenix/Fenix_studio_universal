@@ -29,3 +29,4 @@ El rol y los privilegios de los beta testers aparecían en bitácoras y pruebas 
 ## 4. Impacto
 - **Batería y Rendimiento:** Consumo casi nulo de batería durante el uso activo de la aplicación.
 - **Protección de Datos:** Anonimización total previa a la transmisión.
+

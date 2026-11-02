@@ -3,7 +3,7 @@
  * PROYECTO: FÉNIX STUDIO — PLATAFORMA DE ACCESIBILIDAD Y PROCESAMIENTO ACADÉMICO
  * PROPIEDAD INTELECTUAL Y AUTORÍA ORIGINAL: Eli Gian Cortez Leonardi
  * LOCALIDAD: San Juan, Argentina
- * FECHA Y HORA: 2026-10-26 00:39:30 -03:00
+ * FECHA Y HORA: 2026-11-01 19:30:00 -03:00
  * ARCHIVO: feature/auth/src/main/kotlin/com/fenix/studio/feature/auth/OnboardingAuthState.kt
  * ================================================================================
  */
@@ -25,8 +25,8 @@ enum class AuthEntryMode(val displayLabel: String) {
 }
 
 /**
- * Estado inmutable de la pantalla `P-01` (Bienvenida, Accesibilidad Inicial, Contrato TyC v1.1 `RN-16`/`RN-17`
- * y postulación al **Programa Fenix Beta Testers** sujeta a cuenta autenticada en Supabase y aprobación del creador).
+ * Estado inmutable de la pantalla `P-01` (Bienvenida, Accesibilidad Inicial, Contrato TyC v1.1 `RN-16`/`RN-17`,
+ * autenticación en Supabase y postulación al **Programa Fenix Beta Testers**).
  */
 @Immutable
 data class OnboardingAuthState(
@@ -44,6 +44,16 @@ data class OnboardingAuthState(
     val hasAcceptedAnonymousTelemetryConsent: Boolean = false,
     val betaTesterExpirationEpochMs: Long = 0L,
     val betaTesterApplicationStatus: BetaTesterApplicationStatus = BetaTesterApplicationStatus.NOT_APPLIED,
+    // Campos de autenticación opcional en Supabase (RN-01)
+    val emailInput: String = "",
+    val passwordInput: String = "",
+    val fullNameInput: String = "",
+    val isSignUpMode: Boolean = false,
+    val isAuthenticating: Boolean = false,
+    val authErrorMessage: String? = null,
+    val authSuccessMessage: String? = null,
+    val credits: Int = 0,
+    val userType: String = "normal",
 ) {
     /**
      * Habilita el avance hacia `P-02` únicamente cuando el estudiante leyó el contrato,
@@ -66,6 +76,9 @@ data class OnboardingAuthState(
             isBetaTesterProgramOpen &&
             hasAcceptedAnonymousTelemetryConsent &&
             betaTesterExpirationEpochMs > 0L
+
+    val isAuthenticated: Boolean
+        get() = !supabaseUserId.isNullOrBlank()
 
     companion object {
         const val CURRENT_TYC_VERSION: String = "1.1"

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -74,6 +75,8 @@ fun HomeChatScreen(
     onCopyMessageClick: (HomeChatMessageItem) -> Unit,
     onRetryRotatingKeyClick: (HomeChatMessageItem) -> Unit,
     onSpeakMessageClick: (HomeChatMessageItem) -> Unit = {},
+    onVoiceInputClick: () -> Unit = {},
+    onCancelVoiceClick: () -> Unit = {},
     onNewConversationClick: () -> Unit = {},
     onSelectHistoricalSession: (HistoricalSessionItem) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -308,11 +311,17 @@ fun HomeChatScreen(
             },
             bottomBar = {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding(),
                     color = colors.surface,
                     border = BorderStroke(colors.borderStrokeWidth, colors.outline),
                 ) {
-                    Box(modifier = Modifier.padding(12.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .padding(bottom = 6.dp),
+                    ) {
                         UniversalAIChatInput(
                             state = state.chatInputState,
                             onPromptTextChange = onPromptTextChange,
@@ -321,6 +330,8 @@ fun HomeChatScreen(
                             onLsaToggleClick = onToggleLsaClick,
                             onAutoRetryTriggered = onAutoRetryTriggered,
                             onSwitchProviderClick = onSwitchProviderClick,
+                            onVoiceInputClick = onVoiceInputClick,
+                            onCancelVoiceClick = onCancelVoiceClick,
                         )
                     }
                 }

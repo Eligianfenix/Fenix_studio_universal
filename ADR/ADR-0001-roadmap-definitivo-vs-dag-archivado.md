@@ -25,3 +25,4 @@ Queda prohibido implementar código basándose en documentos archivados.
 ## 4. Impacto
 - **Trazabilidad:** Máquina de estados determinista (DESCUBIERTO → CERRADO) por microtarea.
 - **Calidad:** Cero saltos de fase sin evidencia auditable y sin superación del Gate correspondiente.
+

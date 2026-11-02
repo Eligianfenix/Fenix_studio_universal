@@ -3,7 +3,7 @@
  * PROYECTO: FÉNIX STUDIO — PLATAFORMA DE ACCESIBILIDAD Y PROCESAMIENTO ACADÉMICO
  * PROPIEDAD INTELECTUAL Y AUTORÍA ORIGINAL: Eli Gian Cortez Leonardi
  * LOCALIDAD: San Juan, Argentina
- * FECHA Y HORA: 2026-10-26 00:39:45 -03:00
+ * FECHA Y HORA: 2026-11-01 19:30:00 -03:00
  * ARCHIVO: feature/auth/src/main/kotlin/com/fenix/studio/feature/auth/OnboardingAuthViewModel.kt
  * ================================================================================
  */
@@ -11,21 +11,26 @@
 package com.fenix.studio.feature.auth
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.fenix.studio.core.network.supabase.SupabaseAuthAndDataGateway
 import com.fenix.studio.core.security.quota.BetaTesterApplicationStatus
 import com.fenix.studio.core.security.quota.RemoteUserPermissionsProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * ViewModel determinista para `P-01` (`MF-4.1`).
  * Garantiza el cumplimiento de `RN-01` (ingreso local 100% funcional sin cuenta obligatoria),
- * `RN-16` (bloqueo y re-aceptación ante cambio de versión de TyC), `RN-17` (descargo deontológico y Ley 25.326)
- * y la postulación al **Programa Fenix Beta Testers** sin permitir jamás la auto-atribución local del rol `"beta_tester"`.
+ * `RN-16` (bloqueo y re-aceptación ante cambio de versión de TyC), `RN-17` (descargo deontológico y Ley 25.326),
+ * autenticación opcional en Supabase y postulación al **Programa Fenix Beta Testers** sin permitir
+ * jamás la auto-atribución local del rol `"beta_tester"`.
  */
 class OnboardingAuthViewModel(
     initialStoredTycVersion: String? = null,
+    private val supabaseGateway: SupabaseAuthAndDataGateway? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -60,6 +65,178 @@ class OnboardingAuthViewModel(
 
     fun onSelectEntryMode(mode: AuthEntryMode) {
         _uiState.update { it.copy(selectedEntryMode = mode) }
+    }
+
+    fun onEmailInputChanged(email: String) {
+        _uiState.update { it.copy(emailInput = email, authErrorMessage = null) }
+    }
+
+    fun onPasswordInputChanged(password: String) {
+        _uiState.update { it.copy(passwordInput = password, authErrorMessage = null) }
+    }
+
+    fun onFullNameInputChanged(fullName: String) {
+        _uiState.update { it.copy(fullNameInput = fullName, authErrorMessage = null) }
+    }
+
+    fun onToggleSignUpMode(isSignUp: Boolean) {
+        _uiState.update { it.copy(isSignUpMode = isSignUp, authErrorMessage = null) }
+    }
+
+    fun clearAuthMessages() {
+        _uiState.update { it.copy(authErrorMessage = null, authSuccessMessage = null) }
+    }
+
+    /**
+     * Inicia sesión en Supabase y sincroniza perfil y créditos.
+     */
+    fun signInWithSupabase(deviceId: String = "") {
+        val gateway = supabaseGateway ?: run {
+            _uiState.update { it.copy(authErrorMessage = "Servicio de autenticación no inicializado.") }
+            return
+        }
+        val email = _uiState.value.emailInput.trim()
+        val pass = _uiState.value.passwordInput.trim()
+
+        if (email.isBlank() || pass.isBlank()) {
+            _uiState.update { it.copy(authErrorMessage = "Por favor ingrese email y contraseña.") }
+            return
+        }
+
+        _uiState.update { it.copy(isAuthenticating = true, authErrorMessage = null, authSuccessMessage = null) }
+
+        viewModelScope.launch {
+            gateway.signInWithPassword(email, pass).fold(
+                onSuccess = { session ->
+                    val userId = session.user?.id ?: ""
+                    val token = session.access_token
+
+                    gateway.fetchProfile(token, userId).fold(
+                        onSuccess = { profile ->
+                            if (deviceId.isNotBlank() && profile.device_id.isNullOrBlank()) {
+                                gateway.bindDevice(token, userId, deviceId)
+                            }
+
+                            val roleName = when {
+                                profile.role == "admin" -> RemoteUserPermissionsProfile.ROLE_ADMIN
+                                profile.user_type == "beta_tester" -> RemoteUserPermissionsProfile.ROLE_BETA_TESTER
+                                else -> RemoteUserPermissionsProfile.ROLE_STUDENT_FREE
+                            }
+
+                            _uiState.update { current ->
+                                current.copy(
+                                    isAuthenticating = false,
+                                    supabaseUserId = userId,
+                                    activeRoleName = roleName,
+                                    credits = profile.credits,
+                                    userType = profile.user_type,
+                                    isApprovedByCreatorInSupabase = profile.role == "admin" || profile.user_type == "beta_tester" || profile.credits > 0,
+                                    isBetaTesterProgramOpen = true,
+                                    authSuccessMessage = "Sesión iniciada con éxito (${profile.credits} créditos disponibles).",
+                                    authErrorMessage = null,
+                                )
+                            }
+                        },
+                        onFailure = {
+                            _uiState.update {
+                                it.copy(
+                                    isAuthenticating = false,
+                                    supabaseUserId = userId,
+                                    authSuccessMessage = "Sesión iniciada.",
+                                    authErrorMessage = null,
+                                )
+                            }
+                        }
+                    )
+                },
+                onFailure = { err ->
+                    _uiState.update {
+                        it.copy(
+                            isAuthenticating = false,
+                            authErrorMessage = "Error al iniciar sesión: ${err.message ?: "Credenciales inválidas"}",
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * Registra un nuevo usuario en Supabase con modo normal o beta tester.
+     */
+    fun signUpWithSupabase(isBeta: Boolean = false, deviceId: String = "") {
+        val gateway = supabaseGateway ?: run {
+            _uiState.update { it.copy(authErrorMessage = "Servicio de autenticación no inicializado.") }
+            return
+        }
+        val email = _uiState.value.emailInput.trim()
+        val pass = _uiState.value.passwordInput.trim()
+        val name = _uiState.value.fullNameInput.trim().ifEmpty { "Estudiante Fénix" }
+
+        if (email.isBlank() || pass.isBlank()) {
+            _uiState.update { it.copy(authErrorMessage = "Por favor complete email y contraseña.") }
+            return
+        }
+
+        _uiState.update { it.copy(isAuthenticating = true, authErrorMessage = null, authSuccessMessage = null) }
+
+        viewModelScope.launch {
+            gateway.signUp(email, pass, name, isBeta).fold(
+                onSuccess = { session ->
+                    val userId = session.user?.id ?: ""
+                    val token = session.access_token
+
+                    if (token.isNotBlank() && userId.isNotBlank()) {
+                        gateway.fetchProfile(token, userId).fold(
+                            onSuccess = { profile ->
+                                if (deviceId.isNotBlank()) {
+                                    gateway.bindDevice(token, userId, deviceId)
+                                }
+                                val roleName = if (isBeta) RemoteUserPermissionsProfile.ROLE_BETA_TESTER else RemoteUserPermissionsProfile.ROLE_STUDENT_FREE
+                                _uiState.update { current ->
+                                    current.copy(
+                                        isAuthenticating = false,
+                                        supabaseUserId = userId,
+                                        activeRoleName = roleName,
+                                        credits = profile.credits,
+                                        userType = profile.user_type,
+                                        isApprovedByCreatorInSupabase = isBeta,
+                                        authSuccessMessage = "¡Cuenta creada exitosamente! Créditos asignados: ${profile.credits}.",
+                                        authErrorMessage = null,
+                                    )
+                                }
+                            },
+                            onFailure = {
+                                _uiState.update {
+                                    it.copy(
+                                        isAuthenticating = false,
+                                        supabaseUserId = userId,
+                                        authSuccessMessage = "Cuenta creada.",
+                                        authErrorMessage = null,
+                                    )
+                                }
+                            }
+                        )
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isAuthenticating = false,
+                                authSuccessMessage = "Registro completado exitosamente.",
+                                authErrorMessage = null,
+                            )
+                        }
+                    }
+                },
+                onFailure = { err ->
+                    _uiState.update {
+                        it.copy(
+                            isAuthenticating = false,
+                            authErrorMessage = "Error en el registro: ${err.message ?: "Verifique los datos ingresados"}",
+                        )
+                    }
+                }
+            )
+        }
     }
 
     /**

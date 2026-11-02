@@ -28,3 +28,4 @@ Existía una contradicción sobre dónde deben almacenarse los documentos acadé
 ## 4. Impacto
 - **Garantía Costo 0:** Google Drive brinda 15 GB gratuitos por cuenta dedicada sin costo oculto ni cobros automáticos imprevistos.
 - **Inviolabilidad de Créditos:** El cómputo autoritativo en Supabase previene trampas o duplicaciones locales.
+

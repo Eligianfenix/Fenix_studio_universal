@@ -10,8 +10,17 @@
 
 package com.fenix.studio.navigation
 
+import android.Manifest
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.fenix.studio.core.accessibility.voice.VoiceToTextEngine
+import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -123,6 +132,48 @@ fun FenixRootNavHost(
 
     // Motor TTS Híbrido (Edge-TTS / Android Nativo MF-D.6)
     val ttsEngine = remember { HybridTtsEngine(context) }
+
+    // Motor de Dictado por Voz a Texto (STT a Costo 0, MF-8.2)
+    val voiceToTextEngine = remember { VoiceToTextEngine(context) }
+    var promptBackupBeforeVoice by remember { mutableStateOf("") }
+
+    // Lanzador del intent de reconocimiento de voz de Android como fallback universal
+    val speechIntentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        homeChatViewModel.onVoiceListeningChanged(false)
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                homeChatViewModel.onVoiceTranscriptionReceived(spoken)
+            }
+        }
+    }
+
+    // Solicitud de permiso de micrófono
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            homeChatViewModel.onVoiceListeningChanged(true)
+            voiceToTextEngine.startListening(
+                onResult = { text ->
+                    homeChatViewModel.onVoiceTranscriptionReceived(text)
+                },
+                onPartialResult = { partial ->
+                    homeChatViewModel.onVoicePartialTranscription(partial)
+                },
+                onRmsChanged = { rms ->
+                    homeChatViewModel.onAudioRmsChanged(rms)
+                },
+                onError = {
+                    homeChatViewModel.onVoiceListeningChanged(false)
+                },
+            )
+        } else {
+            homeChatViewModel.onVoiceListeningChanged(false)
+        }
+    }
 
     // Guardián de fallos sanitizado
     val lastCrash by SanitizedCrashReporter.lastCrashFlow.collectAsState()
@@ -291,6 +342,41 @@ fun FenixRootNavHost(
                     onCopyMessageClick = { /* noop */ },
                     onRetryRotatingKeyClick = { /* noop */ },
                     onSpeakMessageClick = { msg -> ttsEngine.speak(msg.text) },
+                    onVoiceInputClick = {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            if (state.chatInputState.isVoiceListening) {
+                                // Tocar el micrófono verde finaliza la grabación y envía el audio transcripto de inmediato
+                                voiceToTextEngine.stopListening()
+                                homeChatViewModel.onVoiceListeningChanged(false)
+                                if (state.chatInputState.promptText.isNotBlank()) {
+                                    homeChatViewModel.onSubmitPrompt()
+                                }
+                            } else {
+                                promptBackupBeforeVoice = state.chatInputState.promptText
+                                homeChatViewModel.onVoiceListeningChanged(true)
+                                voiceToTextEngine.startListening(
+                                    onResult = { text ->
+                                        homeChatViewModel.onVoiceTranscriptionReceived(text)
+                                    },
+                                    onPartialResult = { partial ->
+                                        homeChatViewModel.onVoicePartialTranscription(partial)
+                                    },
+                                    onRmsChanged = { rms ->
+                                        homeChatViewModel.onAudioRmsChanged(rms)
+                                    },
+                                    onError = {
+                                        homeChatViewModel.onVoiceListeningChanged(false)
+                                    },
+                                )
+                            }
+                        } else {
+                            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    onCancelVoiceClick = {
+                        voiceToTextEngine.stopListening()
+                        homeChatViewModel.onCancelVoiceRecording()
+                    },
                     onNewConversationClick = homeChatViewModel::onNewChatSession,
                 )
             }

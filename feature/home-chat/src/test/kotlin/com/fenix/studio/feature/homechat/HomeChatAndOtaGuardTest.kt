@@ -86,4 +86,30 @@ class HomeChatAndOtaGuardTest {
         assertTrue(messages[1].text.contains("Soy Fénix IA"))
         assertEquals("", viewModel.uiState.value.chatInputState.promptText)
     }
+
+    @Test
+    fun `HomeChatViewModel manages voice listening state and appends voice transcription to prompt`() {
+        val viewModel = HomeChatViewModel()
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceListening)
+
+        viewModel.onVoiceListeningChanged(true)
+        assertTrue(viewModel.uiState.value.chatInputState.isVoiceListening)
+
+        viewModel.onVoiceTranscriptionReceived("Consulta sobre resumen académico")
+        assertTrue(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertEquals("Consulta sobre resumen académico", viewModel.uiState.value.chatInputState.promptText)
+
+        // Verificamos que si habla nuevamente continúa actualizando la transcripción acumulada
+        viewModel.onVoiceTranscriptionReceived("Consulta sobre resumen académico y bibliografía obligatoria")
+        assertEquals("Consulta sobre resumen académico y bibliografía obligatoria", viewModel.uiState.value.chatInputState.promptText)
+        assertTrue(viewModel.uiState.value.chatInputState.isVoiceListening)
+
+        // Cancelar grabación restaura el texto previo o limpia
+        viewModel.onPromptChanged("Texto previo")
+        viewModel.onVoiceListeningChanged(true)
+        viewModel.onVoicePartialTranscription("Texto descartado")
+        viewModel.onCancelVoiceRecording()
+        assertFalse(viewModel.uiState.value.chatInputState.isVoiceListening)
+        assertEquals("", viewModel.uiState.value.chatInputState.promptText)
+    }
 }

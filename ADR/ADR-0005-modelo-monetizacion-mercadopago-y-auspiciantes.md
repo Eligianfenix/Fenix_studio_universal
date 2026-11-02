@@ -13,12 +13,14 @@ Existía debate entre integrar pasarelas in-app sujetas a comisiones y requerimi
 
 ## 2. Opciones Consideradas
 1. **Opción A:** Google Play Billing (Rechazada por costo anual de Play Console y 30% de comisiones obligatorias).
-2. **Opción B (Adoptada):** **API de Mercado Pago externa + Red de Auspiciantes Directa**, con distribución libre mediante GitHub Releases.
+2. **Opción B (Adoptada):** **Transferencia Directa por Alias Oficial + Red de Auspiciantes Directa**, con distribución libre mediante GitHub Releases.
 
 ## 3. Decisión
 1. **Adquisición de Créditos:**
-   - Se gestiona out-of-app mediante la **API de Mercado Pago**, generando enlaces de pago directos y validación webhook automatizada.
-   - Cero cobros directos de tarjeta dentro del APK (cumplimiento PCI-DSS por delegación segura a Mercado Pago).
+   - Se gestiona out-of-app mediante **Transferencia Bancaria Directa al Alias oficial (`fenix.academico`)** con 0% comisiones y 0 retenciones impositivas de pasarela.
+   - El estudiante adjunta su comprobante y la aplicación ejecuta escaneo OCR local en el dispositivo a Costo $0 (Google ML Kit en Android / Tesseract.js en Web), extrayendo automáticamente el titular que transfirió y el número de operación.
+   - El creador valida el pago en 2 segundos desde `Fenix Admin` y lo aprueba con 1 solo tap mediante la función RPC `admin_aprobar_pago()`, acreditando los créditos en tiempo real.
+   - La interfaz advierte formalmente: *"La acreditación está sujeta a comprobación y puede demorar hasta 24 hs."*
 2. **Red Ética de Auspiciantes (Diamante, Plata, Bronce):**
    - El creador gestiona auspiciantes mediante diálogo directo y los habilita desde la App Admin con 3 niveles ponderados de visibilidad:
      - **Diamante:** Máxima rotación de aparición.
@@ -29,3 +31,4 @@ Existía debate entre integrar pasarelas in-app sujetas a comisiones y requerimi
 ## 4. Impacto
 - **Costo Cero Absoluto:** Independencia total de Google Play Console o tarifas de desarrollador.
 - **Experiencia de Estudio Ininterrumpida:** Cero banners molestos, videos bloqueantes o popups intrusivos.
+
