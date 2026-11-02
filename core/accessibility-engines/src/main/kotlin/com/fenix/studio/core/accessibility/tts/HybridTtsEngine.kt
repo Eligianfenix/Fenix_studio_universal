@@ -214,8 +214,12 @@ class HybridTtsEngine(
                 piperEngine.speak(
                     text = text,
                     speed = _playbackState.value.speechRate,
-                    onComplete = {
-                        _playbackState.update { it.copy(status = TtsPlaybackStatus.FINISHED) }
+                    onComplete = { success ->
+                        if (success) {
+                            _playbackState.update { it.copy(status = TtsPlaybackStatus.FINISHED) }
+                        } else {
+                            speakWithNativeFallback(text)
+                        }
                     }
                 )
             }

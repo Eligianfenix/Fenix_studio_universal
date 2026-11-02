@@ -3,7 +3,7 @@
  * PROYECTO: FÉNIX STUDIO — PLATAFORMA DE ACCESIBILIDAD Y PROCESAMIENTO ACADÉMICO
  * PROPIEDAD INTELECTUAL Y AUTORÍA ORIGINAL: Eli Gian Cortez Leonardi
  * LOCALIDAD: San Juan, Argentina
- * FECHA Y HORA: 2026-11-02 03:27:00 -03:00
+ * FECHA Y HORA: 2026-11-02 10:40:00 -03:00
  * ARCHIVO: core/accessibility-engines/src/main/kotlin/com/fenix/studio/core/accessibility/tts/NativePiperTtsEngine.kt
  * ================================================================================
  */
@@ -22,6 +22,7 @@ import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Motor de Texto a Voz (TTS) Neuronal 100% Nativo y Soberano a Costo $0 (`MF-8.2`).
@@ -34,18 +35,68 @@ class NativePiperTtsEngine(private val context: Context) {
     private var isInitialized = false
     private var currentAudioTrack: AudioTrack? = null
 
+    private fun ensureAssetsExtracted(destDir: File) {
+        val marker = File(destDir, ".extracted_marker")
+        val modelFile = File(destDir, "es_ES-carlfm-x_low.onnx")
+        val espeakDir = File(destDir, "espeak-ng-data")
+        if (marker.exists() && modelFile.exists() && espeakDir.exists()) {
+            return
+        }
+        destDir.mkdirs()
+        copyAssetRecursively("models/piper_tts", destDir)
+        try {
+            marker.createNewFile()
+        } catch (_: Exception) {}
+    }
+
+    private fun copyAssetRecursively(assetPath: String, destDir: File) {
+        val list = context.assets.list(assetPath) ?: return
+        destDir.mkdirs()
+        for (item in list) {
+            val subAssetPath = if (assetPath.isEmpty()) item else "$assetPath/$item"
+            val subDest = File(destDir, item)
+            val isDirectory = try {
+                context.assets.open(subAssetPath).use { }
+                false
+            } catch (_: Exception) {
+                true
+            }
+            if (isDirectory) {
+                copyAssetRecursively(subAssetPath, subDest)
+            } else {
+                copySingleAsset(subAssetPath, subDest)
+            }
+        }
+    }
+
+    private fun copySingleAsset(assetPath: String, destFile: File) {
+        if (destFile.exists() && destFile.length() > 0) return
+        try {
+            context.assets.open(assetPath).use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("FenixPiperTts", "Error copiando $assetPath: ${e.message}")
+        }
+    }
+
     fun initialize(): Boolean {
         if (isInitialized && tts != null) return true
         return try {
-            val assetManager = context.assets
-            val modelPath = "models/piper_tts/es_ES-carlfm-x_low.onnx"
-            val tokensPath = "models/piper_tts/tokens.txt"
-            val dataDir = "models/piper_tts/espeak-ng-data"
+            val modelDir = File(context.filesDir, "piper_tts")
+            ensureAssetsExtracted(modelDir)
+
+            val modelFile = File(modelDir, "es_ES-carlfm-x_low.onnx")
+            val tokensFile = File(modelDir, "tokens.txt")
+            val dataDir = File(modelDir, "espeak-ng-data")
 
             val vitsConfig = OfflineTtsVitsModelConfig(
-                model = modelPath,
-                tokens = tokensPath,
-                dataDir = dataDir,
+                model = modelFile.absolutePath,
+                lexicon = "",
+                tokens = tokensFile.absolutePath,
+                dataDir = dataDir.absolutePath,
                 noiseScale = 0.667f,
                 noiseScaleW = 0.8f,
                 lengthScale = 1.0f,
@@ -58,9 +109,9 @@ class NativePiperTtsEngine(private val context: Context) {
             val ttsConfig = OfflineTtsConfig(
                 model = modelConfig,
             )
-            tts = OfflineTts(assetManager, ttsConfig)
+            tts = OfflineTts(config = ttsConfig)
             isInitialized = tts != null
-            Log.i("FenixPiperTts", "Piper VITS inicializado exitosamente (sampleRate: ${tts?.sampleRate()})")
+            Log.i("FenixPiperTts", "Piper VITS inicializado exitosamente desde almacenamiento local (sampleRate: ${tts?.sampleRate()})")
             isInitialized
         } catch (e: Throwable) {
             Log.e("FenixPiperTts", "Error al inicializar Piper VITS: ${e.message}", e)
@@ -72,14 +123,14 @@ class NativePiperTtsEngine(private val context: Context) {
     suspend fun speak(
         text: String,
         speed: Float = 1.0f,
-        onComplete: () -> Unit = {},
+        onComplete: (Boolean) -> Unit = {},
     ) = withContext(Dispatchers.Default) {
         if (!isInitialized && !initialize()) {
-            onComplete()
+            onComplete(false)
             return@withContext
         }
         val ttsInstance = tts ?: run {
-            onComplete()
+            onComplete(false)
             return@withContext
         }
 
@@ -87,7 +138,8 @@ class NativePiperTtsEngine(private val context: Context) {
             stop()
             val audio = ttsInstance.generate(text, sid = 0, speed = speed)
             if (audio.samples.isEmpty()) {
-                onComplete()
+                Log.w("FenixPiperTts", "Piper VITS generó 0 muestras de audio para el texto.")
+                onComplete(false)
                 return@withContext
             }
 
@@ -108,7 +160,7 @@ class NativePiperTtsEngine(private val context: Context) {
             val track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -132,10 +184,10 @@ class NativePiperTtsEngine(private val context: Context) {
             track.stop()
             track.release()
             currentAudioTrack = null
-            onComplete()
+            onComplete(true)
         } catch (e: Throwable) {
             Log.e("FenixPiperTts", "Error durante la síntesis: ${e.message}", e)
-            onComplete()
+            onComplete(false)
         }
     }
 
@@ -154,4 +206,3 @@ class NativePiperTtsEngine(private val context: Context) {
         isInitialized = false
     }
 }
-
