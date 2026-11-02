@@ -59,6 +59,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fenix.studio.core.designsystem.components.FenixBrandHeader
+import com.fenix.studio.core.designsystem.components.FenixChatAgentMode
+import com.fenix.studio.core.designsystem.components.FenixSelectableModel
 import com.fenix.studio.core.designsystem.components.UniversalAIChatInput
 import com.fenix.studio.core.designsystem.modifiers.fenixMinTouchTarget
 import com.fenix.studio.core.designsystem.theme.FenixTheme
@@ -94,6 +96,8 @@ fun HomeChatScreen(
     onSpeakMessageClick: (HomeChatMessageItem) -> Unit = {},
     onVoiceInputClick: () -> Unit = {},
     onCancelVoiceClick: () -> Unit = {},
+    onModelSelected: (FenixSelectableModel) -> Unit = {},
+    onAgentModeChange: (FenixChatAgentMode) -> Unit = {},
     onNewConversationClick: () -> Unit = {},
     onSelectHistoricalSession: (HistoricalSessionItem) -> Unit = {},
     onDismissMissingGroqKeyDialog: () -> Unit = {},
@@ -371,6 +375,8 @@ fun HomeChatScreen(
                             onSwitchProviderClick = onSwitchProviderClick,
                             onVoiceInputClick = onVoiceInputClick,
                             onCancelVoiceClick = onCancelVoiceClick,
+                            onModelSelected = onModelSelected,
+                            onAgentModeChange = onAgentModeChange,
                         )
                     }
                 }
@@ -1037,7 +1043,7 @@ private fun ChatMessageBubble(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (item.isUser) "Tú" else if (item.isDeontologicalWarning) "Aviso Deontológico" else "Fénix IA (Gratuito Asistido)",
+                    text = if (item.isUser) "Tú" else if (item.isDeontologicalWarning) "Aviso Deontológico" else item.senderLabel,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (item.isUser) colors.primary else colors.onSurfaceVariant,

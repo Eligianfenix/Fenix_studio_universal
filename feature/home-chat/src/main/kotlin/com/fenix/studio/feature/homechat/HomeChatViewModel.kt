@@ -12,14 +12,19 @@ package com.fenix.studio.feature.homechat
 
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.fenix.studio.core.designsystem.components.FenixChatAgentMode
+import com.fenix.studio.core.designsystem.components.FenixSelectableModel
 import com.fenix.studio.core.designsystem.components.UniversalChatInputUiState
 import com.fenix.studio.core.network.model.FenixStreamEvent
+import com.fenix.studio.core.network.teacher.FenixTeacherKeylessService
 import com.fenix.studio.domain.protocolv3.validation.AcademicDeontologicalGuard
 import com.fenix.studio.domain.protocolv3.validation.DeontologicalDecision
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * Destinos de navegación desde el lienzo principal y cajón de `P-02`.
@@ -45,6 +50,7 @@ data class HomeChatMessageItem(
     val messageId: String,
     val isUser: Boolean,
     val text: String,
+    val senderLabel: String = "Fenix Teacher",
     val activeSlotIndex: Int? = null,
     val isDeontologicalWarning: Boolean = false,
 )
@@ -86,10 +92,47 @@ data class HomeChatUiState(
  */
 class HomeChatViewModel(
     private val otaExecutor: TaskGuardedUpdateExecutor = TaskGuardedUpdateExecutor(),
+    private val fenixTeacherService: FenixTeacherKeylessService = FenixTeacherKeylessService(),
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeChatUiState())
     val uiState: StateFlow<HomeChatUiState> = _uiState.asStateFlow()
+    private var rotatingEndpointCursor: Int = 0
+
+    fun onSelectModel(model: FenixSelectableModel) {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(selectedModel = model),
+            )
+        }
+    }
+
+    fun onSelectAgentMode(mode: FenixChatAgentMode) {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(agentMode = mode),
+            )
+        }
+    }
+
+    /**
+     * Mantiene en el selector de modelos únicamente la opción por defecto "Fenix Teacher"
+     * y debajo agrega los proveedores/modelos que haya configurado el usuario.
+     */
+    fun syncUserConfiguredModels(userModels: List<FenixSelectableModel>) {
+        _uiState.update { current ->
+            val combined = listOf(FenixSelectableModel.DEFAULT_FENIX_TEACHER) +
+                userModels.filterNot { it.id == FenixSelectableModel.DEFAULT_FENIX_TEACHER.id }
+            val currentSelected = combined.find { it.id == current.chatInputState.selectedModel.id }
+                ?: FenixSelectableModel.DEFAULT_FENIX_TEACHER
+            current.copy(
+                chatInputState = current.chatInputState.copy(
+                    availableModels = combined,
+                    selectedModel = currentSelected,
+                ),
+            )
+        }
+    }
 
     fun onPromptChanged(newText: String) {
         _uiState.update { current ->
@@ -231,6 +274,7 @@ class HomeChatViewModel(
     fun onSubmitPrompt(
         isAttachedToAcademicMaterial: Boolean = false,
         simulatedStreamEvent: FenixStreamEvent? = null,
+        useLiveNetwork: Boolean = false,
     ) {
         val currentPrompt = _uiState.value.chatInputState.promptText.trim()
         if (currentPrompt.isEmpty()) return
@@ -273,36 +317,113 @@ class HomeChatViewModel(
             return
         }
 
-        // Envío exitoso normal: registra mensaje del estudiante y sintetiza respuesta pedagógica de Fénix IA
-        val normPrompt = currentPrompt.lowercase()
-        val replyText = if (normPrompt.contains("hola") || normPrompt.contains("buen día") || normPrompt.contains("buenos días") || normPrompt.contains("buenas tardes") || normPrompt.contains("saludos")) {
-            "¡Hola! Soy Fénix IA, tu asistente académico de soberanía local. ¿Qué materia, apunte o texto deseas procesar o consultar hoy?"
-        } else {
-            "He recibido tu consulta: \"$currentPrompt\". Conforme a la regla de no alucinación, para brindarte un análisis riguroso y fundamentado en tus fuentes bibliográficas, puedes vincular este chat a un aula o adjuntar tus apuntes directamente mediante el botón [+]."
+        if (!useLiveNetwork) {
+            // Envío síncrono determinista para pruebas unitarias (MF-D.5)
+            val normPrompt = currentPrompt.lowercase()
+            val replyText = if (normPrompt.contains("hola") || normPrompt.contains("buen día") || normPrompt.contains("buenos días") || normPrompt.contains("buenas tardes") || normPrompt.contains("saludos")) {
+                "¡Hola! Soy Fénix IA, tu asistente académico de soberanía local. ¿Qué materia, apunte o texto deseas procesar o consultar hoy?"
+            } else {
+                "He recibido tu consulta: \"$currentPrompt\". Conforme a la regla de no alucinación, para brindarte un análisis riguroso y fundamentado en tus fuentes bibliográficas, puedes vincular este chat a un aula o adjuntar tus apuntes directamente mediante el botón [+]."
+            }
+
+            _uiState.update { state ->
+                val userMsg = HomeChatMessageItem(
+                    messageId = "msg-${state.messages.size + 1}",
+                    isUser = true,
+                    text = currentPrompt,
+                    senderLabel = "Tú",
+                )
+                val aiMsg = HomeChatMessageItem(
+                    messageId = "msg-${state.messages.size + 2}",
+                    isUser = false,
+                    text = replyText,
+                    senderLabel = state.chatInputState.selectedModel.displayName,
+                    activeSlotIndex = 0,
+                )
+                state.copy(
+                    messages = state.messages + listOf(userMsg, aiMsg),
+                    chatInputState = state.chatInputState.copy(
+                        promptText = "",
+                        isVoiceListening = false,
+                        isVoiceProcessing = false,
+                        audioRmsDb = 0f,
+                    ),
+                )
+            }
+            return
         }
+
+        val activeModel = _uiState.value.chatInputState.selectedModel
+        val activeMode = _uiState.value.chatInputState.agentMode
+        val nowMs = System.currentTimeMillis()
+        val replyMsgId = "msg-$nowMs-ai"
 
         _uiState.update { state ->
             val userMsg = HomeChatMessageItem(
-                messageId = "msg-${state.messages.size + 1}",
+                messageId = "msg-$nowMs-user",
                 isUser = true,
                 text = currentPrompt,
+                senderLabel = "Tú",
             )
-            val aiMsg = HomeChatMessageItem(
-                messageId = "msg-${state.messages.size + 2}",
+            val thinkingMsg = HomeChatMessageItem(
+                messageId = replyMsgId,
                 isUser = false,
-                text = replyText,
+                text = "⏳ ${activeModel.displayName} está elaborando tu respuesta...",
+                senderLabel = activeModel.displayName,
                 activeSlotIndex = 0,
             )
             state.copy(
-                messages = state.messages + listOf(userMsg, aiMsg),
+                messages = state.messages + listOf(userMsg, thinkingMsg),
                 chatInputState = state.chatInputState.copy(
                     promptText = "",
+                    isStreamingResponse = true,
                     isVoiceListening = false,
                     isVoiceProcessing = false,
                     audioRmsDb = 0f,
                 ),
             )
         }
+
+        viewModelScope.launch {
+            val systemPrompt = buildSystemPromptForMode(activeMode)
+            val startIdx = rotatingEndpointCursor
+            rotatingEndpointCursor = (rotatingEndpointCursor + 1) % FenixTeacherKeylessService.KEYLESS_ENDPOINTS.size
+
+            val aiReply = fenixTeacherService.sendChatToFenixTeacher(
+                userPrompt = currentPrompt,
+                systemInstruction = systemPrompt,
+                startEndpointIndex = startIdx,
+            )
+
+            _uiState.update { state ->
+                state.copy(
+                    messages = state.messages.map { msg ->
+                        if (msg.messageId == replyMsgId) {
+                            msg.copy(
+                                text = aiReply,
+                                senderLabel = activeModel.displayName,
+                            )
+                        } else {
+                            msg
+                        }
+                    },
+                    chatInputState = state.chatInputState.copy(
+                        isStreamingResponse = false,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun buildSystemPromptForMode(mode: FenixChatAgentMode): String = when (mode) {
+        FenixChatAgentMode.ACADEMIC_FRAMING ->
+            "Eres Fenix Teacher, un profesor y asistente académico riguroso, claro y pedagógico. Responde siempre en español con precisión conceptual, estructurando las ideas para facilitar el estudio universitario."
+        FenixChatAgentMode.COOPERATIVE_TUTOR ->
+            "Eres Fenix Teacher en modo Tutor Cooperativo. Guía al estudiante paso a paso en español mediante ejemplos claros y preguntas orientadoras para consolidar su comprensión."
+        FenixChatAgentMode.DEEP_RESEARCH ->
+            "Eres Fenix Teacher en modo Investigación Profunda. Analiza el tema en español con exhaustividad académica, desglosando antecedentes, ejes teóricos, metodologías y perspectivas críticas."
+        FenixChatAgentMode.APA_EDITOR_ASSISTANT ->
+            "Eres Fenix Teacher en modo Asistente de Redacción Académica APA 7.ª edición. Ayuda a redactar, estructurar y citar con rigor académico en español."
     }
 
     fun onOtaUpdateAvailable(

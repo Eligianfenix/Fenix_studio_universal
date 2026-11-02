@@ -61,6 +61,26 @@ import com.fenix.studio.core.designsystem.modifiers.fenixMinTouchTarget
 import com.fenix.studio.core.designsystem.theme.FenixTheme
 
 /**
+ * Modelo o servicio seleccionable en la barra superior de la caja de chat.
+ * Por defecto incluye únicamente "Fenix Teacher" (pool unificado de 14 IAs sin API)
+ * y debajo lista los proveedores/modelos BYOK configurados por el usuario.
+ */
+@Immutable
+data class FenixSelectableModel(
+    val id: String,
+    val displayName: String,
+    val isDefaultTeacher: Boolean = false,
+) {
+    companion object {
+        val DEFAULT_FENIX_TEACHER = FenixSelectableModel(
+            id = "fenix_teacher",
+            displayName = "Fenix Teacher",
+            isDefaultTeacher = true,
+        )
+    }
+}
+
+/**
  * Modos operativos del agente conversacional transversal (reutilizable en P-02, P-08 y P-09).
  */
 enum class FenixChatAgentMode(val displayLabel: String) {
@@ -78,6 +98,8 @@ enum class FenixChatAgentMode(val displayLabel: String) {
 @Immutable
 data class UniversalChatInputUiState(
     val promptText: String = "",
+    val selectedModel: FenixSelectableModel = FenixSelectableModel.DEFAULT_FENIX_TEACHER,
+    val availableModels: List<FenixSelectableModel> = listOf(FenixSelectableModel.DEFAULT_FENIX_TEACHER),
     val agentMode: FenixChatAgentMode = FenixChatAgentMode.ACADEMIC_FRAMING,
     val isStreamingResponse: Boolean = false,
     val isLsaQuickAccessEnabled: Boolean = false,
@@ -222,12 +244,15 @@ fun UniversalAIChatInput(
     modifier: Modifier = Modifier,
     onVoiceInputClick: () -> Unit = {},
     onCancelVoiceClick: () -> Unit = {},
+    onModelSelected: (FenixSelectableModel) -> Unit = {},
     onAgentModeChange: (FenixChatAgentMode) -> Unit = {},
     onCrossClassroomsClick: () -> Unit = {},
 ) {
     val colors = FenixTheme.colors
     val typography = MaterialTheme.typography
     var isPlusMenuExpanded by remember { mutableStateOf(false) }
+    var isModelMenuExpanded by remember { mutableStateOf(false) }
+    var isModeMenuExpanded by remember { mutableStateOf(false) }
     val configuration = LocalConfiguration.current
     val scrollState = rememberScrollState()
     val maxTextFieldHeight = (configuration.screenHeightDp * 0.35f).dp.coerceIn(100.dp, 280.dp)
@@ -271,17 +296,122 @@ fun UniversalAIChatInput(
                     .fillMaxWidth()
                     .padding(horizontal = 14.dp, vertical = 10.dp),
             ) {
-                // Etiqueta del modo activo
+                // Fila superior: Selector de Modelos (izquierda) y Selector de Modos (derecha)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Start,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "Modo: ${state.agentMode.displayLabel}",
-                        style = typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.primary,
-                    )
+                    // 1. Selector de Modelos (Por defecto: Fenix Teacher + Proveedores configurados por el usuario)
+                    Box(modifier = Modifier.weight(1f, fill = false)) {
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { isModelMenuExpanded = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.background,
+                            border = BorderStroke(colors.borderStrokeWidth, colors.primary.copy(alpha = 0.6f)),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = "🎓 ${state.selectedModel.displayName} ▾",
+                                    style = typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = colors.primary,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = isModelMenuExpanded,
+                            onDismissRequest = { isModelMenuExpanded = false },
+                        ) {
+                            state.availableModels.forEach { modelOption ->
+                                val isSelected = modelOption.id == state.selectedModel.id
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = if (modelOption.isDefaultTeacher) {
+                                                "🎓 ${modelOption.displayName} (Por defecto · Sin API)"
+                                            } else {
+                                                "🤖 ${modelOption.displayName}"
+                                            },
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) colors.primary else colors.onSurface,
+                                        )
+                                    },
+                                    onClick = {
+                                        isModelMenuExpanded = false
+                                        onModelSelected(modelOption)
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "🔑 Configurar API Keys / Modelos...",
+                                        color = colors.primary,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                },
+                                onClick = {
+                                    isModelMenuExpanded = false
+                                    onSwitchProviderClick()
+                                },
+                            )
+                        }
+                    }
+
+                    // 2. Selector de Modos (Personalidades / System Prompts de la IA)
+                    Box(modifier = Modifier.weight(1f, fill = false)) {
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { isModeMenuExpanded = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.background,
+                            border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = "⚡ Modo: ${state.agentMode.displayLabel} ▾",
+                                    style = typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = colors.onSurface,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = isModeMenuExpanded,
+                            onDismissRequest = { isModeMenuExpanded = false },
+                        ) {
+                            FenixChatAgentMode.entries.forEach { mode ->
+                                val isSelected = mode == state.agentMode
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = mode.displayLabel,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) colors.primary else colors.onSurface,
+                                        )
+                                    },
+                                    onClick = {
+                                        isModeMenuExpanded = false
+                                        onAgentModeChange(mode)
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))

@@ -55,6 +55,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.fenix.studio.core.accessibility.tts.HybridTtsEngine
+import com.fenix.studio.core.designsystem.components.FenixSelectableModel
 import com.fenix.studio.core.designsystem.modifiers.fenixMinTouchTarget
 import com.fenix.studio.core.designsystem.theme.FenixTheme
 import com.fenix.studio.crash.SanitizedCrashDialog
@@ -239,6 +240,16 @@ fun FenixRootNavHost(
             // P-02 Home Chat
             composable(FenixDestinations.P02_HOME_CHAT) {
                 val state by homeChatViewModel.uiState.collectAsState()
+                androidx.compose.runtime.LaunchedEffect(settingsState.discoveredModels) {
+                    val userConfiguredModels = settingsState.discoveredModels.map { entity ->
+                        FenixSelectableModel(
+                            id = entity.modelId,
+                            displayName = "${entity.providerId}: ${entity.modelId}",
+                            isDefaultTeacher = false,
+                        )
+                    }
+                    homeChatViewModel.syncUserConfiguredModels(userConfiguredModels)
+                }
                 HomeChatScreen(
                     state = state,
                     onPromptTextChange = homeChatViewModel::onPromptChanged,
@@ -247,12 +258,12 @@ fun FenixRootNavHost(
                             homeChatViewModel.onVoiceProcessingStarted()
                             voiceToTextEngine.stopListening()
                         } else {
-                            homeChatViewModel.onSubmitPrompt()
+                            homeChatViewModel.onSubmitPrompt(useLiveNetwork = true)
                         }
                     },
                     onAttachMaterialClick = { navController.navigate(FenixDestinations.P05_PROCESSOR_CONFIG) },
                     onToggleLsaClick = { /* Posicionado para fase dedicada post-Versión Estable 1 (Decisión A1) */ },
-                    onAutoRetryTriggered = { homeChatViewModel.onSubmitPrompt() },
+                    onAutoRetryTriggered = { homeChatViewModel.onSubmitPrompt(useLiveNetwork = true) },
                     onSwitchProviderClick = { navController.navigate(FenixDestinations.P04_BYOK_VAULT) },
                     onNavigateToDestination = { destination: FenixHubDestination ->
                         when (destination) {
@@ -297,7 +308,7 @@ fun FenixRootNavHost(
                                     onResult = { text ->
                                         if (text.isNotBlank()) {
                                             homeChatViewModel.onVoiceTranscriptionReceived(text)
-                                            homeChatViewModel.onSubmitPrompt()
+                                            homeChatViewModel.onSubmitPrompt(useLiveNetwork = true)
                                         } else {
                                             homeChatViewModel.onVoiceTranscriptionReceived("No se detectó audio.")
                                         }
@@ -321,6 +332,8 @@ fun FenixRootNavHost(
                         voiceToTextEngine.cancel()
                         homeChatViewModel.onCancelVoiceRecording()
                     },
+                    onModelSelected = homeChatViewModel::onSelectModel,
+                    onAgentModeChange = homeChatViewModel::onSelectAgentMode,
                     onNewConversationClick = homeChatViewModel::onNewChatSession,
                     onDismissMissingGroqKeyDialog = { homeChatViewModel.onShowMissingGroqKeyDialog(false) },
                     onOpenGroqConfigDialog = { homeChatViewModel.onShowGroqConfigDialog(true) },
