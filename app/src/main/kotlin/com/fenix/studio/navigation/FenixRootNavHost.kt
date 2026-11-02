@@ -348,7 +348,15 @@ fun FenixRootNavHost(
                     },
                     onCopyMessageClick = { /* noop */ },
                     onRetryRotatingKeyClick = { /* noop */ },
-                    onSpeakMessageClick = { msg -> ttsEngine.speak(msg.text) },
+                    onSpeakMessageClick = { msg ->
+                        val hasAzureKey = !ttsEngine.preferences?.getAzureKey().isNullOrBlank()
+                        val useDefaultOnly = ttsEngine.preferences?.isUseDeviceDefaultOnly() == true
+                        if (!hasAzureKey && !useDefaultOnly) {
+                            homeChatViewModel.onShowMissingAzureTtsDialog(true, msg.text)
+                        } else {
+                            ttsEngine.speak(msg.text)
+                        }
+                    },
                     onVoiceInputClick = {
                         if (!voiceToTextEngine.hasApiKey()) {
                             homeChatViewModel.onShowMissingGroqKeyDialog(true)
@@ -396,6 +404,20 @@ fun FenixRootNavHost(
                         voiceToTextEngine.setApiKey(key)
                     },
                     currentGroqApiKey = voiceToTextEngine.preferences.getApiKey(),
+                    onDismissMissingAzureTtsDialog = { homeChatViewModel.onShowMissingAzureTtsDialog(false) },
+                    onOpenAzureTtsConfigDialog = { homeChatViewModel.onShowAzureTtsConfigDialog(true) },
+                    onDismissAzureTtsConfigDialog = { homeChatViewModel.onShowAzureTtsConfigDialog(false) },
+                    onSaveAzureTtsKey = { key, region ->
+                        ttsEngine.preferences?.setAzureKey(key)
+                        ttsEngine.preferences?.setAzureRegion(region)
+                        ttsEngine.preferences?.setUseDeviceDefaultOnly(false)
+                        state.pendingSpeechText?.let { ttsEngine.speak(it) }
+                    },
+                    onUseDeviceDefaultTtsClick = {
+                        state.pendingSpeechText?.let { ttsEngine.speakWithNativeFallback(it) }
+                    },
+                    currentAzureApiKey = ttsEngine.preferences?.getAzureKey().orEmpty(),
+                    currentAzureRegion = ttsEngine.preferences?.getAzureRegion() ?: "eastus",
                 )
             }
 
@@ -422,6 +444,13 @@ fun FenixRootNavHost(
                     },
                     onTestVoiceSample = {
                         ttsEngine.speak("Hola. Esta es la voz configurada para la lectura de tus apuntes y audiolibros en Fénix Studio.")
+                    },
+                    azureApiKey = ttsEngine.preferences?.getAzureKey().orEmpty(),
+                    azureRegion = ttsEngine.preferences?.getAzureRegion() ?: "eastus",
+                    onSaveAzureKey = { key, region ->
+                        ttsEngine.preferences?.setAzureKey(key)
+                        ttsEngine.preferences?.setAzureRegion(region)
+                        ttsEngine.preferences?.setUseDeviceDefaultOnly(false)
                     },
                 )
             }

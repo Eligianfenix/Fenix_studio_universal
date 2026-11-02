@@ -71,6 +71,9 @@ data class HomeChatUiState(
     val otaDecision: OtaExecutionDecision? = null,
     val isMissingGroqKeyDialogOpen: Boolean = false,
     val isGroqConfigDialogOpen: Boolean = false,
+    val isMissingAzureTtsKeyDialogOpen: Boolean = false,
+    val isAzureTtsConfigDialogOpen: Boolean = false,
+    val pendingSpeechText: String? = null,
 )
 
 /**
@@ -174,6 +177,14 @@ class HomeChatViewModel(
 
     fun onShowGroqConfigDialog(show: Boolean) {
         _uiState.update { it.copy(isGroqConfigDialogOpen = show) }
+    }
+
+    fun onShowMissingAzureTtsDialog(show: Boolean, pendingText: String? = null) {
+        _uiState.update { it.copy(isMissingAzureTtsKeyDialogOpen = show, pendingSpeechText = pendingText) }
+    }
+
+    fun onShowAzureTtsConfigDialog(show: Boolean) {
+        _uiState.update { it.copy(isAzureTtsConfigDialogOpen = show) }
     }
 
     /**

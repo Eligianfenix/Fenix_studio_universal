@@ -28,13 +28,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fenix.studio.core.designsystem.modifiers.fenixMinTouchTarget
@@ -63,6 +70,9 @@ fun SettingsScreen(
     onChangeRate: (Float) -> Unit = {},
     onSelectVoice: (String) -> Unit = {},
     onTestVoiceSample: () -> Unit = {},
+    azureApiKey: String = "",
+    azureRegion: String = "eastus",
+    onSaveAzureKey: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val colors = FenixTheme.colors
@@ -203,9 +213,9 @@ fun SettingsScreen(
             )
 
             val voiceOptions = listOf(
-                "male_mature_rioplatense" to "Hombre Maduro (AMMA Audiolibros - Rioplatense)",
+                "male_mature_rioplatense" to "Hombre Maduro (Narrador Profesional - Rioplatense)",
                 "male_classic_neutral" to "Hombre Clásico (Narrador Neutro)",
-                "female_rioplatense" to "Mujer Rioplatense (Cálida y Natural)",
+                "female_rioplatense" to "Mujer Rioplatense (Locución Profesional)",
                 "female_neutral" to "Mujer Neutra (Locución Académica)",
                 "device_default" to "Voz por Defecto del Dispositivo",
             )
@@ -278,6 +288,63 @@ fun SettingsScreen(
                     .fenixMinTouchTarget(),
             ) {
                 Text("🔊 Escuchar Muestra de Narrador", style = typography.labelMedium)
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Sub-bloque Clave de Azure Speech
+            val uriHandler = LocalUriHandler.current
+            var keyInput by remember(azureApiKey) { mutableStateOf(azureApiKey) }
+            var regionInput by remember(azureRegion) { mutableStateOf(azureRegion) }
+
+            Text(
+                text = "Clave API de Narrador Neuronal (Azure Speech F0 Gratis)",
+                style = typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.primary,
+            )
+            Text(
+                text = "500.000 caracteres mensuales gratuitos en nivel F0 a Costo $0 sin cargos.",
+                style = typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+
+            OutlinedTextField(
+                value = keyInput,
+                onValueChange = { keyInput = it },
+                label = { Text("Clave API (Opcional)") },
+                placeholder = { Text("Ej: 4a2b8c9d...") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+
+            OutlinedTextField(
+                value = regionInput,
+                onValueChange = { regionInput = it },
+                label = { Text("Región (Por defecto: eastus)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = { onSaveAzureKey(keyInput.trim(), regionInput.trim().ifBlank { "eastus" }) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fenixMinTouchTarget(),
+                ) {
+                    Text("Guardar Clave", style = typography.labelSmall)
+                }
+
+                OutlinedButton(
+                    onClick = { uriHandler.openUri("https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices") },
+                    modifier = Modifier.fenixMinTouchTarget(),
+                    border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                ) {
+                    Text("Obtener Clave ➔", style = typography.labelSmall)
+                }
             }
         }
 

@@ -95,6 +95,13 @@ fun HomeChatScreen(
     onDismissGroqConfigDialog: () -> Unit = {},
     onSaveGroqApiKey: (String) -> Unit = {},
     currentGroqApiKey: String = "",
+    onDismissMissingAzureTtsDialog: () -> Unit = {},
+    onOpenAzureTtsConfigDialog: () -> Unit = {},
+    onDismissAzureTtsConfigDialog: () -> Unit = {},
+    onSaveAzureTtsKey: (String, String) -> Unit = { _, _ -> },
+    onUseDeviceDefaultTtsClick: () -> Unit = {},
+    currentAzureApiKey: String = "",
+    currentAzureRegion: String = "eastus",
     modifier: Modifier = Modifier,
 ) {
     val colors = FenixTheme.colors
@@ -565,6 +572,191 @@ fun HomeChatScreen(
             dismissButton = {
                 OutlinedButton(
                     onClick = onDismissGroqConfigDialog,
+                    modifier = Modifier.fenixMinTouchTarget(),
+                    border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                ) {
+                    Text("Cancelar", style = MaterialTheme.typography.labelMedium)
+                }
+            },
+        )
+    }
+
+    // Diálogo Empático cuando no hay API Key de Azure Speech TTS configurada
+    if (state.isMissingAzureTtsKeyDialogOpen) {
+        AlertDialog(
+            onDismissRequest = onDismissMissingAzureTtsDialog,
+            title = {
+                Text(
+                    text = "Voz de Narrador Profesional",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary,
+                )
+            },
+            text = {
+                Text(
+                    text = "¡Hola! Para escuchar las respuestas con timbre humano de narrador profesional de audiolibros (alta fidelidad y entonación natural), puedes configurar tu clave oficial de Azure Speech GRATIS (500.000 caracteres/mes a Costo $0 sin tarjeta).\n\nSi deseas configurarla ahora pulsa en 'Configurar'. También puedes escuchar ahora mismo con la voz por defecto de tu móvil.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurface,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDismissMissingAzureTtsDialog()
+                        onOpenAzureTtsConfigDialog()
+                    },
+                    modifier = Modifier.fenixMinTouchTarget(),
+                ) {
+                    Text("Configurar Clave (Gratis)", style = MaterialTheme.typography.labelMedium)
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            onDismissMissingAzureTtsDialog()
+                            onUseDeviceDefaultTtsClick()
+                        },
+                        modifier = Modifier.fenixMinTouchTarget(),
+                        border = BorderStroke(colors.borderStrokeWidth, colors.primary),
+                    ) {
+                        Text("Usar Voz del Móvil", style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = onDismissMissingAzureTtsDialog,
+                        modifier = Modifier.fenixMinTouchTarget(),
+                        border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                    ) {
+                        Text("Salir", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            },
+        )
+    }
+
+    // Panel de Configuración de Clave Azure Speech TTS a Costo $0
+    if (state.isAzureTtsConfigDialogOpen) {
+        var inputKey by remember(currentAzureApiKey) { mutableStateOf(currentAzureApiKey) }
+        var inputRegion by remember(currentAzureRegion) { mutableStateOf(currentAzureRegion) }
+        val clipboardManager = LocalClipboardManager.current
+        val uriHandler = LocalUriHandler.current
+
+        AlertDialog(
+            onDismissRequest = onDismissAzureTtsConfigDialog,
+            title = {
+                Text(
+                    text = "Configurar Narrador Profesional",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary,
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = colors.surface),
+                        border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "¿Qué es y cómo funciona?",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary,
+                            )
+                            Text(
+                                text = "Azure Speech ofrece 500.000 caracteres mensuales 100% GRATIS en su nivel F0 para disfrutar de voces neuronales con calidad de audiolibro.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onSurface,
+                            )
+                            Text(
+                                text = "Tu clave se almacena exclusivamente de forma local y cifrada en tu teléfono.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Pasos para obtener tu clave GRATIS:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.onSurface,
+                    )
+
+                    Text(
+                        text = "1. Toca el botón de abajo para abrir el portal de Azure.\n2. Inicia sesión o crea una cuenta gratuita.\n3. Crea un recurso Speech en nivel de tarifa 'Free F0'.\n4. En 'Claves y punto de conexión', copia la Clave 1 y la Región, y pégalas aquí.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurface,
+                    )
+
+                    Button(
+                        onClick = { uriHandler.openUri("https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fenixMinTouchTarget(),
+                    ) {
+                        Text("Abrir portal.azure.com ➔", style = MaterialTheme.typography.labelSmall)
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    OutlinedTextField(
+                        value = inputKey,
+                        onValueChange = { inputKey = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("API Key (32 caracteres)") },
+                        placeholder = { Text("Ej: 4a2b8c9d...") },
+                        singleLine = true,
+                    )
+
+                    OutlinedTextField(
+                        value = inputRegion,
+                        onValueChange = { inputRegion = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Región de Azure") },
+                        placeholder = { Text("eastus, brazilsouth, etc.") },
+                        singleLine = true,
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val clip = clipboardManager.getText()?.text?.trim().orEmpty()
+                                if (clip.isNotBlank()) inputKey = clip
+                            },
+                            modifier = Modifier.fenixMinTouchTarget(),
+                            border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                        ) {
+                            Text("📋 Pegar del Portapapeles", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onSaveAzureTtsKey(inputKey.trim(), inputRegion.trim().ifBlank { "eastus" })
+                        onDismissAzureTtsConfigDialog()
+                    },
+                    modifier = Modifier.fenixMinTouchTarget(),
+                    enabled = inputKey.isNotBlank(),
+                ) {
+                    Text("Guardar y Activar", style = MaterialTheme.typography.labelMedium)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = onDismissAzureTtsConfigDialog,
                     modifier = Modifier.fenixMinTouchTarget(),
                     border = BorderStroke(colors.borderStrokeWidth, colors.outline),
                 ) {
