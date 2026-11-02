@@ -36,7 +36,7 @@ class NativePiperTtsEngine(private val context: Context) {
     private var currentAudioTrack: AudioTrack? = null
 
     private fun ensureAssetsExtracted(destDir: File) {
-        val marker = File(destDir, ".extracted_marker_davefx")
+        val marker = File(destDir, ".extracted_marker_davefx_v2")
         val modelFile = File(destDir, "es_ES-davefx-medium.onnx")
         val espeakDir = File(destDir, "espeak-ng-data")
         if (marker.exists() && modelFile.exists() && espeakDir.exists()) {
