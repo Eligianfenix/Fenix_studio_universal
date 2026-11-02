@@ -191,7 +191,7 @@ fun SettingsScreen(
             }
         }
 
-        // P-03f · Configuración de Voz y Narrador (TTS)
+        // P-03f · Configuración de Voz y Narrador Neuronal IA (TTS)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -202,70 +202,14 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text = "P-03f · Narrador y Voz Académica (TTS)",
+                text = "P-03f · Narrador Neuronal IA Offline (TTS)",
                 style = typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.onSurface,
             )
             Text(
-                text = "Configuración de lectura en voz alta para apuntes y exportación de audiolibros a Costo $0.",
+                text = "Motor de voz neuronal 100% nativo e integrado en el dispositivo a Costo $0 (sin cuentas, sin internet ni claves API).",
                 style = typography.bodySmall,
                 color = colors.onSurfaceVariant,
-            )
-
-            val voiceOptions = listOf(
-                "male_mature_rioplatense" to "Hombre Maduro (Narrador Profesional - Rioplatense)",
-                "male_classic_neutral" to "Hombre Clásico (Narrador Neutro)",
-                "female_rioplatense" to "Mujer Rioplatense (Locución Profesional)",
-                "female_neutral" to "Mujer Neutra (Locución Académica)",
-                "device_default" to "Voz por Defecto del Dispositivo",
-            )
-
-            voiceOptions.forEach { (voiceId, label) ->
-                val isSelected = selectedVoiceId == voiceId
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) colors.surface else colors.background)
-                        .border(
-                            width = colors.borderStrokeWidth,
-                            color = if (isSelected) colors.primary else colors.outline,
-                            shape = RoundedCornerShape(8.dp),
-                        )
-                        .clickable { onSelectVoice(voiceId) }
-                        .fenixMinTouchTarget()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = label,
-                        style = typography.bodySmall,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = colors.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = if (isSelected) "ACTIVO" else "ELEGIR",
-                        style = typography.labelSmall,
-                        color = if (isSelected) colors.primary else colors.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "Tono de Voz: ${String.format(java.util.Locale.US, "%.2f", currentPitch)}x ${if (currentPitch < 0.85f) "(Grave y Maduro)" else if (currentPitch > 1.05f) "(Agudo)" else "(Neutro)"}",
-                style = typography.bodySmall,
-                fontWeight = FontWeight.Medium,
-                color = colors.onSurface,
-            )
-            Slider(
-                value = currentPitch,
-                onValueChange = onChangePitch,
-                valueRange = 0.6f..1.4f,
-                modifier = Modifier.fillMaxWidth(),
             )
 
             Text(
@@ -288,63 +232,6 @@ fun SettingsScreen(
                     .fenixMinTouchTarget(),
             ) {
                 Text("🔊 Escuchar Muestra de Narrador", style = typography.labelMedium)
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Sub-bloque Clave de Azure Speech
-            val uriHandler = LocalUriHandler.current
-            var keyInput by remember(azureApiKey) { mutableStateOf(azureApiKey) }
-            var regionInput by remember(azureRegion) { mutableStateOf(azureRegion) }
-
-            Text(
-                text = "Clave API de Narrador Neuronal (Azure Speech F0 Gratis)",
-                style = typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.primary,
-            )
-            Text(
-                text = "500.000 caracteres mensuales gratuitos en nivel F0 a Costo $0 sin cargos.",
-                style = typography.bodySmall,
-                color = colors.onSurfaceVariant,
-            )
-
-            OutlinedTextField(
-                value = keyInput,
-                onValueChange = { keyInput = it },
-                label = { Text("Clave API (Opcional)") },
-                placeholder = { Text("Ej: 4a2b8c9d...") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-
-            OutlinedTextField(
-                value = regionInput,
-                onValueChange = { regionInput = it },
-                label = { Text("Región (Por defecto: eastus)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    onClick = { onSaveAzureKey(keyInput.trim(), regionInput.trim().ifBlank { "eastus" }) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fenixMinTouchTarget(),
-                ) {
-                    Text("Guardar Clave", style = typography.labelSmall)
-                }
-
-                OutlinedButton(
-                    onClick = { uriHandler.openUri("https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices") },
-                    modifier = Modifier.fenixMinTouchTarget(),
-                    border = BorderStroke(colors.borderStrokeWidth, colors.outline),
-                ) {
-                    Text("Obtener Clave ➔", style = typography.labelSmall)
-                }
             }
         }
 
