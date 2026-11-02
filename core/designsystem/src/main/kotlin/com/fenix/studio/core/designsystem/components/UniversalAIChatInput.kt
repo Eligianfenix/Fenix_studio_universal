@@ -80,7 +80,7 @@ data class UniversalChatInputUiState(
     val promptText: String = "",
     val agentMode: FenixChatAgentMode = FenixChatAgentMode.ACADEMIC_FRAMING,
     val isStreamingResponse: Boolean = false,
-    val isLsaQuickAccessEnabled: Boolean = true,
+    val isLsaQuickAccessEnabled: Boolean = false,
     val isVoiceListening: Boolean = false,
     val isVoiceProcessing: Boolean = false,
     val audioRmsDb: Float = 0f,
@@ -274,7 +274,7 @@ fun UniversalAIChatInput(
                 // Etiqueta del modo activo
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -282,16 +282,6 @@ fun UniversalAIChatInput(
                         style = typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.primary,
                     )
-                    if (state.isLsaQuickAccessEnabled) {
-                        Text(
-                            text = "🤟 LSA Activo",
-                            style = typography.labelSmall,
-                            color = colors.onSurfaceVariant,
-                            modifier = Modifier
-                                .clickable(onClick = onLsaToggleClick)
-                                .padding(2.dp),
-                        )
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))

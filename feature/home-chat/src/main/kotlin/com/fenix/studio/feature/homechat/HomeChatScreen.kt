@@ -322,18 +322,6 @@ fun HomeChatScreen(
                                 logoSize = 30.dp,
                             )
                         }
-
-                        OutlinedButton(
-                            onClick = onToggleLsaClick,
-                            modifier = Modifier.fenixMinTouchTarget(),
-                            border = BorderStroke(colors.borderStrokeWidth, colors.primary),
-                        ) {
-                            Text(
-                                text = "🤟 LSA",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
                     }
                 }
             },

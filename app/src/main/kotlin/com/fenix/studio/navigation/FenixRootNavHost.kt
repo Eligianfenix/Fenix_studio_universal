@@ -53,10 +53,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.fenix.studio.core.accessibility.lsa.LsaFloatingPipOverlay
-import com.fenix.studio.core.accessibility.lsa.LsaSignLanguagePipEngine
 import com.fenix.studio.core.accessibility.tts.HybridTtsEngine
 import com.fenix.studio.core.designsystem.modifiers.fenixMinTouchTarget
 import com.fenix.studio.core.designsystem.theme.FenixTheme
@@ -123,10 +120,6 @@ fun FenixRootNavHost(
     val classroomsViewModel: ClassroomsViewModel = viewModel()
     val docsViewModel: FenixDocsViewModel = viewModel()
     val communityViewModel: CommunityViewModel = viewModel()
-
-    // Motor LSA 2.5D
-    val lsaEngine = remember { LsaSignLanguagePipEngine() }
-    val lsaState by lsaEngine.uiState.collectAsState()
 
     // Motor TTS Híbrido (Edge-TTS / Android Nativo MF-D.6)
     val ttsEngine = remember { HybridTtsEngine(context) }
@@ -229,16 +222,7 @@ fun FenixRootNavHost(
                         }
                     },
                     onAttachMaterialClick = { navController.navigate(FenixDestinations.P05_PROCESSOR_CONFIG) },
-                    onToggleLsaClick = {
-                        if (!lsaState.isOverlayVisible) {
-                            val latestText = state.chatInputState.promptText.ifBlank {
-                                state.messages.lastOrNull()?.text
-                                    ?: "Hola clase vamos a estudiar y comprender en la universidad"
-                            }
-                            lsaEngine.translateSpanishToLsaGlosses(latestText)
-                        }
-                        lsaEngine.toggleOverlayVisibility()
-                    },
+                    onToggleLsaClick = { /* Posicionado para fase dedicada post-Versión Estable 1 (Decisión A1) */ },
                     onAutoRetryTriggered = { homeChatViewModel.onSubmitPrompt() },
                     onSwitchProviderClick = { navController.navigate(FenixDestinations.P04_BYOK_VAULT) },
                     onNavigateToDestination = { destination: FenixHubDestination ->
@@ -507,90 +491,6 @@ fun FenixRootNavHost(
                     onDismissToast = communityViewModel::onDismissToastFeedback,
                 )
             }
-        }
-
-        // Botón Rápido Accesible Flotante Superior [ 🤟 ] (Lengua de Señas Argentina LSA)
-        // Se oculta en P-02 para evitar solapamiento visual con la TopAppBar
-        val navBackStackEntry by navController.currentBackStackEntryAsState()
-        val currentDestination = navBackStackEntry?.destination?.route
-        if (currentDestination != FenixDestinations.P02_HOME_CHAT) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, end = 16.dp),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(colors.primary)
-                        .border(2.dp, colors.outline, CircleShape)
-                        .clickable { lsaEngine.toggleOverlayVisibility() }
-                        .fenixMinTouchTarget()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        text = "🤟 LSA",
-                        style = typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = colors.onPrimary,
-                    )
-                }
-            }
-        }
-
-        // Ventana Flotante PiP No Bloqueante con Avatar Cinético 2.5D LSA (MF-10.3)
-        if (lsaState.isOverlayVisible) {
-            val homeState by homeChatViewModel.uiState.collectAsState()
-            LsaFloatingPipOverlay(
-                lsaState = lsaState,
-                isVoiceListening = homeState.chatInputState.isVoiceListening,
-                onSelectMode = { lsaEngine.setInteractionMode(it) },
-                onTranslateText = { textToTranslate ->
-                    val resolvedText = textToTranslate.ifBlank {
-                        homeChatViewModel.uiState.value.messages.lastOrNull()?.text
-                            ?: "Hola clase vamos a estudiar y comprender en la universidad"
-                    }
-                    lsaEngine.translateSpanishToLsaGlosses(resolvedText)
-                },
-                onAdvanceNextGloss = { lsaEngine.advanceToNextGloss() },
-                onRestartSequence = { lsaEngine.restartSequence() },
-                onToggleLiveMicClick = {
-                    if (homeState.chatInputState.isVoiceListening) {
-                        voiceToTextEngine.stopListening()
-                        homeChatViewModel.onVoiceListeningChanged(false)
-                    } else if (
-                        ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.RECORD_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED
-                    ) {
-                        homeChatViewModel.onVoiceListeningChanged(true)
-                        voiceToTextEngine.startListening(
-                            onResult = { spoken ->
-                                homeChatViewModel.onVoiceListeningChanged(false)
-                                if (spoken.isNotBlank()) {
-                                    lsaEngine.translateSpanishToLsaGlosses(spoken)
-                                }
-                            },
-                            onPartialResult = { partial ->
-                                if (partial.isNotBlank()) {
-                                    lsaEngine.translateSpanishToLsaGlosses(partial)
-                                }
-                            },
-                            onRmsChanged = { rms -> homeChatViewModel.onAudioRmsChanged(rms) },
-                            onError = { homeChatViewModel.onVoiceListeningChanged(false) },
-                        )
-                    } else {
-                        recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    }
-                },
-                onSpeakAloudForDeafUser = { textToSpeak ->
-                    ttsEngine.speak(textToSpeak)
-                },
-                onCloseOverlay = { lsaEngine.toggleOverlayVisibility() },
-            )
         }
     }
 }
