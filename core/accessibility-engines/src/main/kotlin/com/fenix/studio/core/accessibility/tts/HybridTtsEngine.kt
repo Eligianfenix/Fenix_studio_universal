@@ -3,7 +3,7 @@
  * PROYECTO: FÉNIX STUDIO — PLATAFORMA DE ACCESIBILIDAD Y PROCESAMIENTO ACADÉMICO
  * PROPIEDAD INTELECTUAL Y AUTORÍA ORIGINAL: Eli Gian Cortez Leonardi
  * LOCALIDAD: San Juan, Argentina
- * FECHA Y HORA: 2026-10-26 03:47:45 -03:00
+ * FECHA Y HORA: 2026-11-02 01:52:00 -03:00
  * ARCHIVO: core/accessibility-engines/src/main/kotlin/com/fenix/studio/core/accessibility/tts/HybridTtsEngine.kt
  * ================================================================================
  */
@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.io.File
 import java.util.Locale
 
 /**
@@ -45,28 +46,41 @@ data class TtsPlaybackState(
     val status: TtsPlaybackStatus = TtsPlaybackStatus.IDLE,
     val currentParagraphIndex: Int = 0,
     val totalParagraphs: Int = 0,
-    val speechRate: Float = 1.0f,
-    val pitch: Float = 1.0f,
+    val speechRate: Float = 0.92f,
+    val pitch: Float = 0.82f,
     val currentUtteranceId: String? = null,
     val errorMessage: String? = null,
     val activeVoiceProfile: TtsVoiceProfile = TtsVoiceProfile.LOCAL_DEVICE_STANDARD,
     val activeVoiceName: String? = null,
+    val selectedNarratorVoice: FenixNarratorVoice = FenixNarratorVoice.MALE_MATURE_RIOPLATENSE,
 )
 
 /**
  * Motor TTS Local Soberano a Costo 0 (`MF-8.2`, `MF-D.6`).
- * Prioriza la configuración de voces naturales / Edge-TTS antes del fallback a TTS mecánico local de Android.
- * Ofrece lectura sincronizada por párrafo y control de velocidad granular (`0.75x..2.0x`).
+ * Configurado por defecto con voz profunda y madura de narrador de audiolibros (AMMA Audiolibros, Rioplatense).
+ * Soporta síntesis continua por párrafo, exportación a archivos reproducibles y personalización en ajustes.
  */
 class HybridTtsEngine(
     private val context: Context? = null,
     private val customTtsProvider: (() -> TextToSpeech?)? = null,
 ) : TextToSpeech.OnInitListener {
 
+    val preferences: TtsPreferences? = context?.let { TtsPreferences(it) }
+
     private var tts: TextToSpeech? = null
     private var isInitialized = false
 
-    private val _playbackState = MutableStateFlow(TtsPlaybackState())
+    private val initialVoice = preferences?.getSelectedVoice() ?: FenixNarratorVoice.MALE_MATURE_RIOPLATENSE
+    private val initialPitch = preferences?.getPitch() ?: initialVoice.defaultPitch
+    private val initialRate = preferences?.getSpeechRate() ?: initialVoice.defaultRate
+
+    private val _playbackState = MutableStateFlow(
+        TtsPlaybackState(
+            pitch = initialPitch,
+            speechRate = initialRate,
+            selectedNarratorVoice = initialVoice,
+        )
+    )
     val playbackState: StateFlow<TtsPlaybackState> = _playbackState.asStateFlow()
 
     private var activeParagraphs: List<String> = emptyList()
@@ -97,9 +111,21 @@ class HybridTtsEngine(
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             isInitialized = true
-            configureNaturalVoiceOrFallback()
-            tts?.setSpeechRate(_playbackState.value.speechRate)
-            tts?.setPitch(_playbackState.value.pitch)
+            val currentVoice = preferences?.getSelectedVoice() ?: FenixNarratorVoice.MALE_MATURE_RIOPLATENSE
+            val currentPitch = preferences?.getPitch() ?: currentVoice.defaultPitch
+            val currentRate = preferences?.getSpeechRate() ?: currentVoice.defaultRate
+
+            _playbackState.update {
+                it.copy(
+                    pitch = currentPitch,
+                    speechRate = currentRate,
+                    selectedNarratorVoice = currentVoice,
+                )
+            }
+
+            configureVoiceByNarratorProfile(currentVoice)
+            tts?.setSpeechRate(currentRate)
+            tts?.setPitch(currentPitch)
             configureUtteranceListener()
         } else {
             isInitialized = false
@@ -113,43 +139,72 @@ class HybridTtsEngine(
     }
 
     /**
-     * Prioriza la configuración de voces naturales / neurales (Edge-TTS / Neural Voices)
-     * disponibles en el sistema antes de recurrir a la voz mecánica local por defecto (`MF-D.6`).
+     * Configura el idioma, tono y características de la voz seleccionada por el estudiante.
      */
-    fun configureNaturalVoiceOrFallback() {
-        val targetLocale = Locale.forLanguageTag("es-AR")
+    fun configureVoiceByNarratorProfile(narratorVoice: FenixNarratorVoice) {
+        preferences?.setSelectedVoice(narratorVoice)
+        val targetLocale = Locale.forLanguageTag(narratorVoice.targetLocaleTag)
         try {
             val availableVoices = tts?.voices
-            val naturalVoice = availableVoices?.firstOrNull { voice ->
-                voice.locale.language.equals("es", ignoreCase = true) &&
-                    (voice.name.contains("natural", ignoreCase = true) ||
-                     voice.name.contains("neural", ignoreCase = true) ||
-                     voice.name.contains("edge", ignoreCase = true) ||
-                     voice.quality >= 400) // Voice.QUALITY_HIGH / VERY_HIGH
-            }
+            val isMaleTarget = narratorVoice == FenixNarratorVoice.MALE_MATURE_RIOPLATENSE ||
+                narratorVoice == FenixNarratorVoice.MALE_CLASSIC_NEUTRAL
 
-            if (naturalVoice != null) {
-                tts?.voice = naturalVoice
+            val matchingVoice = availableVoices?.firstOrNull { voice ->
+                val matchesLang = voice.locale.language.equals("es", ignoreCase = true)
+                val matchesGender = if (isMaleTarget) {
+                    voice.name.contains("male", ignoreCase = true) || !voice.name.contains("ana", ignoreCase = true)
+                } else {
+                    voice.name.contains("female", ignoreCase = true) || voice.name.contains("ana", ignoreCase = true)
+                }
+                matchesLang && matchesGender
+            } ?: availableVoices?.firstOrNull { it.locale.language.equals("es", ignoreCase = true) }
+
+            if (matchingVoice != null) {
+                tts?.voice = matchingVoice
                 _playbackState.update {
                     it.copy(
-                        activeVoiceProfile = TtsVoiceProfile.EDGE_NATURAL_NEURAL,
-                        activeVoiceName = naturalVoice.name,
+                        selectedNarratorVoice = narratorVoice,
+                        activeVoiceName = matchingVoice.name,
                     )
                 }
                 return
             }
         } catch (_: Throwable) {
-            // Fallback seguro si getVoices() no está disponible en entorno de pruebas
+            // Fallback seguro si getVoices() falla en pruebas
         }
 
-        // Fallback a motor estándar local de Android
         tts?.language = targetLocale
         _playbackState.update {
             it.copy(
-                activeVoiceProfile = TtsVoiceProfile.LOCAL_DEVICE_STANDARD,
-                activeVoiceName = "Android Standard TTS (${targetLocale.toLanguageTag()})",
+                selectedNarratorVoice = narratorVoice,
+                activeVoiceName = "${narratorVoice.displayName} (${targetLocale.toLanguageTag()})",
             )
         }
+    }
+
+    /**
+     * Sintetiza y exporta directamente el texto a un archivo de audio WAV en almacenamiento local.
+     * Permite generar audiolibros completos y apuntes reproducibles offline a Costo $0.
+     */
+    fun synthesizeToFile(
+        text: String,
+        outputFile: File,
+        utteranceId: String = "fenix_audiobook_${System.currentTimeMillis()}",
+        onComplete: (Boolean) -> Unit = {},
+    ) {
+        if (!isInitialized || tts == null) {
+            onComplete(false)
+            return
+        }
+        val result = tts?.synthesizeToFile(text, null, outputFile, utteranceId)
+        onComplete(result == TextToSpeech.SUCCESS)
+    }
+
+    /**
+     * Prioriza la configuración de voces naturales disponibles en el sistema.
+     */
+    fun configureNaturalVoiceOrFallback() {
+        configureVoiceByNarratorProfile(_playbackState.value.selectedNarratorVoice)
     }
 
     /**
@@ -225,7 +280,6 @@ class HybridTtsEngine(
 
     /**
      * Sintetiza y reproduce el texto en voz alta de forma inmediata (`MF-8.2`, `MF-D.6`).
-     * Segmenta en párrafos naturales para sincronización visual y auditiva.
      */
     fun speak(text: String) {
         if (text.isBlank()) return
@@ -244,7 +298,6 @@ class HybridTtsEngine(
         if (isInitialized && tts != null) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         } else {
-            // Entorno de emulación o test
             _playbackState.update {
                 it.copy(
                     status = TtsPlaybackStatus.PLAYING,
@@ -254,17 +307,11 @@ class HybridTtsEngine(
         }
     }
 
-    /**
-     * Pausa la locución activa preservando el índice del párrafo actual.
-     */
     fun pauseReading() {
         tts?.stop()
         _playbackState.update { it.copy(status = TtsPlaybackStatus.PAUSED) }
     }
 
-    /**
-     * Reanuda la locución desde el párrafo actual.
-     */
     fun resumeReading() {
         val currentIndex = _playbackState.value.currentParagraphIndex
         if (currentIndex in activeParagraphs.indices) {
@@ -273,9 +320,6 @@ class HybridTtsEngine(
         }
     }
 
-    /**
-     * Detiene por completo la lectura y resetea el cursor.
-     */
     fun stopReading() {
         tts?.stop()
         _playbackState.update {
@@ -293,6 +337,7 @@ class HybridTtsEngine(
     fun setSpeechRate(rate: Float) {
         val clampedRate = rate.coerceIn(0.75f, 2.0f)
         tts?.setSpeechRate(clampedRate)
+        preferences?.setSpeechRate(clampedRate)
         _playbackState.update { it.copy(speechRate = clampedRate) }
     }
 
@@ -302,12 +347,10 @@ class HybridTtsEngine(
     fun setPitch(pitch: Float) {
         val clampedPitch = pitch.coerceIn(0.5f, 1.5f)
         tts?.setPitch(clampedPitch)
+        preferences?.setPitch(clampedPitch)
         _playbackState.update { it.copy(pitch = clampedPitch) }
     }
 
-    /**
-     * Libera los recursos del motor TTS local.
-     */
     fun shutdown() {
         tts?.stop()
         tts?.shutdown()

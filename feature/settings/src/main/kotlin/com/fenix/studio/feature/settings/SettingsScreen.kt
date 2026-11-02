@@ -23,8 +23,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +56,13 @@ fun SettingsScreen(
     onSelectTouchTargetProfile: (FenixTouchTargetProfile) -> Unit,
     onToggleAnonymousTelemetryConsent: (Boolean) -> Unit = {},
     onOpenByokVault: () -> Unit,
+    currentPitch: Float = 0.82f,
+    currentRate: Float = 0.92f,
+    selectedVoiceId: String = "male_mature_rioplatense",
+    onChangePitch: (Float) -> Unit = {},
+    onChangeRate: (Float) -> Unit = {},
+    onSelectVoice: (String) -> Unit = {},
+    onTestVoiceSample: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = FenixTheme.colors
@@ -167,6 +178,106 @@ fun SettingsScreen(
                     style = typography.labelMedium,
                     color = colors.primary,
                 )
+            }
+        }
+
+        // P-03f · Configuración de Voz y Narrador (TTS)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surface)
+                .border(colors.borderStrokeWidth, colors.outline, RoundedCornerShape(12.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "P-03f · Narrador y Voz Académica (TTS)",
+                style = typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.onSurface,
+            )
+            Text(
+                text = "Configuración de lectura en voz alta para apuntes y exportación de audiolibros a Costo $0.",
+                style = typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+
+            val voiceOptions = listOf(
+                "male_mature_rioplatense" to "Hombre Maduro (AMMA Audiolibros - Rioplatense)",
+                "male_classic_neutral" to "Hombre Clásico (Narrador Neutro)",
+                "female_rioplatense" to "Mujer Rioplatense (Cálida y Natural)",
+                "female_neutral" to "Mujer Neutra (Locución Académica)",
+                "device_default" to "Voz por Defecto del Dispositivo",
+            )
+
+            voiceOptions.forEach { (voiceId, label) ->
+                val isSelected = selectedVoiceId == voiceId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) colors.surface else colors.background)
+                        .border(
+                            width = colors.borderStrokeWidth,
+                            color = if (isSelected) colors.primary else colors.outline,
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        .clickable { onSelectVoice(voiceId) }
+                        .fenixMinTouchTarget()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = label,
+                        style = typography.bodySmall,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = colors.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = if (isSelected) "ACTIVO" else "ELEGIR",
+                        style = typography.labelSmall,
+                        color = if (isSelected) colors.primary else colors.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "Tono de Voz: ${String.format(java.util.Locale.US, "%.2f", currentPitch)}x ${if (currentPitch < 0.85f) "(Grave y Maduro)" else if (currentPitch > 1.05f) "(Agudo)" else "(Neutro)"}",
+                style = typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface,
+            )
+            Slider(
+                value = currentPitch,
+                onValueChange = onChangePitch,
+                valueRange = 0.6f..1.4f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Text(
+                text = "Velocidad de Narración: ${String.format(java.util.Locale.US, "%.2f", currentRate)}x ${if (currentRate < 0.95f) "(Pausado y Solemne)" else if (currentRate > 1.1f) "(Rápido)" else "(Normal)"}",
+                style = typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface,
+            )
+            Slider(
+                value = currentRate,
+                onValueChange = onChangeRate,
+                valueRange = 0.75f..1.5f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Button(
+                onClick = onTestVoiceSample,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fenixMinTouchTarget(),
+            ) {
+                Text("🔊 Escuchar Muestra de Narrador", style = typography.labelMedium)
             }
         }
 

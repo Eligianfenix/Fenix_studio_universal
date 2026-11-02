@@ -402,6 +402,7 @@ fun FenixRootNavHost(
             // P-03 Settings
             composable(FenixDestinations.P03_SETTINGS) {
                 val state by settingsViewModel.uiState.collectAsState()
+                val ttsState by ttsEngine.playbackState.collectAsState()
                 SettingsScreen(
                     state = state,
                     onSelectThemeMode = settingsViewModel::onSelectThemeMode,
@@ -409,6 +410,19 @@ fun FenixRootNavHost(
                     onSelectTouchTargetProfile = settingsViewModel::onSelectTouchTargetProfile,
                     onToggleAnonymousTelemetryConsent = settingsViewModel::onToggleAnonymousTelemetryConsent,
                     onOpenByokVault = { navController.navigate(FenixDestinations.P04_BYOK_VAULT) },
+                    currentPitch = ttsState.pitch,
+                    currentRate = ttsState.speechRate,
+                    selectedVoiceId = ttsState.selectedNarratorVoice.id,
+                    onChangePitch = { ttsEngine.setPitch(it) },
+                    onChangeRate = { ttsEngine.setSpeechRate(it) },
+                    onSelectVoice = { voiceId ->
+                        val voice = com.fenix.studio.core.accessibility.tts.FenixNarratorVoice.entries.firstOrNull { it.id == voiceId }
+                            ?: com.fenix.studio.core.accessibility.tts.FenixNarratorVoice.MALE_MATURE_RIOPLATENSE
+                        ttsEngine.configureVoiceByNarratorProfile(voice)
+                    },
+                    onTestVoiceSample = {
+                        ttsEngine.speak("Hola. Esta es la voz configurada para la lectura de tus apuntes y audiolibros en Fénix Studio.")
+                    },
                 )
             }
 
