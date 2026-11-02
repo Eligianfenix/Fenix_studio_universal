@@ -3,7 +3,7 @@
  * PROYECTO: FÉNIX STUDIO — PLATAFORMA DE ACCESIBILIDAD Y PROCESAMIENTO ACADÉMICO
  * PROPIEDAD INTELECTUAL Y AUTORÍA ORIGINAL: Eli Gian Cortez Leonardi
  * LOCALIDAD: San Juan, Argentina
- * FECHA Y HORA: 2026-11-01 22:00:00 -03:00
+ * FECHA Y HORA: 2026-11-02 00:44:00 -03:00
  * ARCHIVO: core/accessibility-engines/src/main/kotlin/com/fenix/studio/core/accessibility/voice/VoiceToTextEngine.kt
  * ================================================================================
  */
@@ -16,10 +16,6 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
-import com.k2fsa.sherpa.onnx.OfflineModelConfig
-import com.k2fsa.sherpa.onnx.OfflineRecognizer
-import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
-import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,31 +25,35 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 data class VoiceInputState(
     val isListening: Boolean = false,
     val partialText: String = "",
     val rmsDb: Float = 0f,
     val lastError: String? = null,
-    val isAvailable: Boolean = true,
-    val isWhisperActive: Boolean = false,
+    val hasApiKey: Boolean = false,
 )
 
 /**
- * Motor local soberano de reconocimiento de voz a texto (STT) a Costo 0 (`MF-8.2`).
- * Ejecuta Whisper Int8 local empaquetado en los assets del APK con lectura directa por AssetManager.
+ * Motor soberano de reconocimiento de voz a texto (STT) a Costo 0 (`MF-8.2`).
+ * Captura audio PCM 16-bit 16kHz en memoria y lo transcribe mediante la API en la nube
+ * (Groq Cloud Whisper Large v3 / compatible OpenAI) sin requerir modelos locales pesados.
  */
 class VoiceToTextEngine(
     private val context: Context,
 ) {
-    private val _state = MutableStateFlow(VoiceInputState())
+    val preferences = VoiceByokPreferences(context)
+    val client = GroqCloudTranscriptionClient(preferences)
+
+    private val _state = MutableStateFlow(VoiceInputState(hasApiKey = preferences.hasApiKey()))
     val state: StateFlow<VoiceInputState> = _state.asStateFlow()
 
     private val scope = CoroutineScope(Dispatchers.Default + Job())
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private var whisperRecognizer: OfflineRecognizer? = null
     private var isRecording = false
     private var recordingJob: Job? = null
 
@@ -61,41 +61,11 @@ class VoiceToTextEngine(
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-    init {
-        scope.launch {
-            initWhisperSafely()
-        }
-    }
+    fun hasApiKey(): Boolean = preferences.hasApiKey()
 
-    private suspend fun initWhisperSafely(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val whisperConfig = OfflineWhisperModelConfig(
-                encoder = "models/whisper/base-encoder.int8.onnx",
-                decoder = "models/whisper/base-decoder.int8.onnx",
-                language = "es",
-                task = "transcribe",
-                tailPaddings = 1000,
-            )
-            val modelConfig = OfflineModelConfig(
-                whisper = whisperConfig,
-                tokens = "models/whisper/base-tokens.txt",
-                numThreads = 4,
-                debug = false,
-                provider = "cpu",
-            )
-            val config = OfflineRecognizerConfig(
-                modelConfig = modelConfig,
-            )
-            whisperRecognizer = OfflineRecognizer(
-                assetManager = context.assets,
-                config = config,
-            )
-            _state.update { it.copy(isWhisperActive = true, isAvailable = true) }
-            true
-        } catch (e: Exception) {
-            _state.update { it.copy(isWhisperActive = false, lastError = e.localizedMessage) }
-            false
-        }
+    fun setApiKey(key: String) {
+        preferences.setApiKey(key)
+        _state.update { it.copy(hasApiKey = preferences.hasApiKey()) }
     }
 
     fun startListening(
@@ -123,23 +93,27 @@ class VoiceToTextEngine(
             return
         }
 
-        val recordedSamples = mutableListOf<Float>()
+        val pcmAudioBytes = ByteArrayOutputStream()
 
         recordingJob = scope.launch(Dispatchers.IO) {
             try {
                 audioRecord.startRecording()
-                val buffer = ShortArray(1024)
+                val buffer = ByteArray(2048)
 
                 while (isActive && isRecording) {
                     val read = audioRecord.read(buffer, 0, buffer.size)
                     if (read > 0) {
+                        pcmAudioBytes.write(buffer, 0, read)
+
+                        // Cálculo de volumen RMS para la UI
                         var sumSquare = 0.0
-                        for (i in 0 until read) {
-                            val sample = buffer[i] / 32768.0f
-                            recordedSamples.add(sample)
-                            sumSquare += (sample * sample)
+                        val shortCount = read / 2
+                        for (i in 0 until shortCount) {
+                            val shortVal = (buffer[i * 2 + 1].toInt() shl 8) or (buffer[i * 2].toInt() and 0xFF)
+                            val normalized = shortVal / 32768.0
+                            sumSquare += (normalized * normalized)
                         }
-                        val rms = kotlin.math.sqrt(sumSquare / read).toFloat()
+                        val rms = kotlin.math.sqrt(sumSquare / shortCount).toFloat()
                         val rmsDb = if (rms > 0.0001f) (20f * kotlin.math.log10(rms) + 60f).coerceIn(0f, 100f) else 0f
                         mainHandler.post {
                             _state.update { it.copy(rmsDb = rmsDb) }
@@ -153,47 +127,27 @@ class VoiceToTextEngine(
                     audioRecord.release()
                 } catch (_: Exception) {}
 
-                // Si se canceló y no hay muestras, salir
-                if (!isActive || recordedSamples.isEmpty()) return@launch
+                if (!isActive || pcmAudioBytes.size() == 0) return@launch
 
-                // Inferencia offline con Whisper
-                val recognizer = whisperRecognizer
-                if (recognizer != null && recordedSamples.isNotEmpty()) {
-                    mainHandler.post { onPartialResult?.invoke("Enviando audio...") }
+                mainHandler.post { onPartialResult?.invoke("Transcribiendo con Groq...") }
 
-                    // Asegurar al menos 0.5 segundos de audio (padding de ceros al final) para evitar subdesbordamiento de ventana mel en Whisper ONNX con palabras ultracortas
-                    val samples = if (recordedSamples.size < sampleRate / 2) {
-                        val padded = recordedSamples.toMutableList()
-                        while (padded.size < sampleRate / 2) {
-                            padded.add(0.0f)
-                        }
-                        padded.toFloatArray()
-                    } else {
-                        recordedSamples.toFloatArray()
-                    }
+                val rawPcm = pcmAudioBytes.toByteArray()
+                val wavBytes = createWavByteArray(rawPcm, sampleRate, 1, 16)
 
-                    val stream = recognizer.createStream()
-                    val resultText = try {
-                        stream.acceptWaveform(samples, sampleRate)
-                        recognizer.decode(stream)
-                        val text = recognizer.getResult(stream).text.trim()
-                        android.util.Log.d("FenixVoice", "Whisper-Base transcribed: '$text' (samples=${samples.size})")
-                        text
-                    } finally {
-                        stream.release()
-                    }
+                val resultText = client.transcribeAudio(wavBytes)
+                android.util.Log.d("FenixVoice", "Groq transcribed text: '$resultText'")
 
-                    mainHandler.post {
-                        _state.update { it.copy(isListening = false, rmsDb = 0f, partialText = resultText) }
-                        onPartialResult?.invoke(resultText)
-                        onResult(resultText)
-                    }
+                mainHandler.post {
+                    _state.update { it.copy(isListening = false, rmsDb = 0f, partialText = resultText) }
+                    onPartialResult?.invoke(resultText)
+                    onResult(resultText)
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) return@launch
+                android.util.Log.e("FenixVoice", "Error en Groq Transcription: ${e.localizedMessage}", e)
                 mainHandler.post {
                     _state.update { it.copy(isListening = false, rmsDb = 0f, lastError = e.localizedMessage) }
-                    onError?.invoke("Error en Whisper local: ${e.localizedMessage}")
+                    onError?.invoke(e.localizedMessage ?: "Error al transcribir")
                 }
             }
         }
@@ -208,5 +162,33 @@ class VoiceToTextEngine(
         recordingJob?.cancel()
         recordingJob = null
         _state.update { it.copy(isListening = false, rmsDb = 0f, partialText = "") }
+    }
+
+    private fun createWavByteArray(pcmData: ByteArray, sampleRate: Int, channels: Int, bitsPerSample: Int): ByteArray {
+        val totalAudioLen = pcmData.size.toLong()
+        val totalDataLen = totalAudioLen + 36
+        val byteRate = (sampleRate * channels * bitsPerSample / 8).toLong()
+
+        val header = ByteArray(44)
+        val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
+
+        buffer.put("RIFF".toByteArray())
+        buffer.putInt(totalDataLen.toInt())
+        buffer.put("WAVE".toByteArray())
+        buffer.put("fmt ".toByteArray())
+        buffer.putInt(16) // Subchunk1Size para PCM
+        buffer.putShort(1) // AudioFormat PCM = 1
+        buffer.putShort(channels.toShort())
+        buffer.putInt(sampleRate)
+        buffer.putInt(byteRate.toInt())
+        buffer.putShort((channels * bitsPerSample / 8).toShort())
+        buffer.putShort(bitsPerSample.toShort())
+        buffer.put("data".toByteArray())
+        buffer.putInt(totalAudioLen.toInt())
+
+        val wavOut = ByteArrayOutputStream(44 + pcmData.size)
+        wavOut.write(header)
+        wavOut.write(pcmData)
+        return wavOut.toByteArray()
     }
 }

@@ -57,6 +57,16 @@ import com.fenix.studio.core.designsystem.components.FenixBrandHeader
 import com.fenix.studio.core.designsystem.components.UniversalAIChatInput
 import com.fenix.studio.core.designsystem.modifiers.fenixMinTouchTarget
 import com.fenix.studio.core.designsystem.theme.FenixTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
 import kotlinx.coroutines.launch
 
 /**
@@ -80,6 +90,11 @@ fun HomeChatScreen(
     onCancelVoiceClick: () -> Unit = {},
     onNewConversationClick: () -> Unit = {},
     onSelectHistoricalSession: (HistoricalSessionItem) -> Unit = {},
+    onDismissMissingGroqKeyDialog: () -> Unit = {},
+    onOpenGroqConfigDialog: () -> Unit = {},
+    onDismissGroqConfigDialog: () -> Unit = {},
+    onSaveGroqApiKey: (String) -> Unit = {},
+    currentGroqApiKey: String = "",
     modifier: Modifier = Modifier,
 ) {
     val colors = FenixTheme.colors
@@ -394,6 +409,169 @@ fun HomeChatScreen(
                 }
             }
         }
+    }
+
+    // Diálogo Empático cuando no hay API Key de Groq configurada
+    if (state.isMissingGroqKeyDialogOpen) {
+        AlertDialog(
+            onDismissRequest = onDismissMissingGroqKeyDialog,
+            title = {
+                Text(
+                    text = "Transcripción por Voz Instantánea",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary,
+                )
+            },
+            text = {
+                Text(
+                    text = "¡Hola! Para usar esta función debes configurar una API Key de Groq GRATIS. Si quieres configurarla ahora presiona en el botón 'Configuración', sino presiona 'Salir'.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurface,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDismissMissingGroqKeyDialog()
+                        onOpenGroqConfigDialog()
+                    },
+                    modifier = Modifier.fenixMinTouchTarget(),
+                ) {
+                    Text("Configuración", style = MaterialTheme.typography.labelMedium)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = onDismissMissingGroqKeyDialog,
+                    modifier = Modifier.fenixMinTouchTarget(),
+                    border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                ) {
+                    Text("Salir", style = MaterialTheme.typography.labelMedium)
+                }
+            },
+        )
+    }
+
+    // Panel de Configuración de Clave Groq Cloud a Costo $0
+    if (state.isGroqConfigDialogOpen) {
+        var inputKey by remember(currentGroqApiKey) { mutableStateOf(currentGroqApiKey) }
+        val clipboardManager = LocalClipboardManager.current
+        val uriHandler = LocalUriHandler.current
+
+        AlertDialog(
+            onDismissRequest = onDismissGroqConfigDialog,
+            title = {
+                Text(
+                    text = "Configurar Voz (Groq Cloud)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary,
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = colors.surface),
+                        border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "¿Qué es y cómo funciona?",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary,
+                            )
+                            Text(
+                                text = "Groq Cloud procesa audio con Whisper Large v3 a velocidad de rayo. Ofrece 2.000 solicitudes diarias 100% GRATIS a Costo $0 absoluto.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onSurface,
+                            )
+                            Text(
+                                text = "Tu clave se almacena de forma privada y cifrada en tu dispositivo. Nadie más tiene acceso a ella.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Pasos para obtener tu clave GRATIS:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.onSurface,
+                    )
+
+                    Text(
+                        text = "1. Toca el botón de abajo para ir a la consola de Groq.\n2. Inicia sesión con Google o GitHub.\n3. Presiona 'Create API Key' y cópiala.\n4. Vuelve aquí y presiona 'Pegar'.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurface,
+                    )
+
+                    Button(
+                        onClick = { uriHandler.openUri("https://console.groq.com/keys") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fenixMinTouchTarget(),
+                    ) {
+                        Text("Abrir console.groq.com/keys ➔", style = MaterialTheme.typography.labelSmall)
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    OutlinedTextField(
+                        value = inputKey,
+                        onValueChange = { inputKey = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("API Key (gsk_...)") },
+                        placeholder = { Text("gsk_...") },
+                        singleLine = true,
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val clip = clipboardManager.getText()?.text?.trim().orEmpty()
+                                if (clip.isNotBlank()) inputKey = clip
+                            },
+                            modifier = Modifier.fenixMinTouchTarget(),
+                            border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                        ) {
+                            Text("📋 Pegar del Portapapeles", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onSaveGroqApiKey(inputKey.trim())
+                        onDismissGroqConfigDialog()
+                    },
+                    modifier = Modifier.fenixMinTouchTarget(),
+                    enabled = inputKey.isNotBlank(),
+                ) {
+                    Text("Guardar Clave", style = MaterialTheme.typography.labelMedium)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = onDismissGroqConfigDialog,
+                    modifier = Modifier.fenixMinTouchTarget(),
+                    border = BorderStroke(colors.borderStrokeWidth, colors.outline),
+                ) {
+                    Text("Cancelar", style = MaterialTheme.typography.labelMedium)
+                }
+            },
+        )
     }
 }
 

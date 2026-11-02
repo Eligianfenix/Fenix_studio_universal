@@ -350,9 +350,11 @@ fun FenixRootNavHost(
                     onRetryRotatingKeyClick = { /* noop */ },
                     onSpeakMessageClick = { msg -> ttsEngine.speak(msg.text) },
                     onVoiceInputClick = {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        if (!voiceToTextEngine.hasApiKey()) {
+                            homeChatViewModel.onShowMissingGroqKeyDialog(true)
+                        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                             if (state.chatInputState.isVoiceListening) {
-                                // Tocar el micrófono verde finaliza la grabación; activa estado "Enviando audio..." y decodifica
+                                // Tocar el micrófono verde finaliza la grabación y transcribe
                                 homeChatViewModel.onVoiceProcessingStarted()
                                 voiceToTextEngine.stopListening()
                             } else {
@@ -364,7 +366,7 @@ fun FenixRootNavHost(
                                             homeChatViewModel.onVoiceTranscriptionReceived(text)
                                             homeChatViewModel.onSubmitPrompt()
                                         } else {
-                                            homeChatViewModel.onCancelVoiceRecording()
+                                            homeChatViewModel.onVoiceTranscriptionReceived("No se detectó audio.")
                                         }
                                     },
                                     onPartialResult = { partial ->
@@ -373,8 +375,8 @@ fun FenixRootNavHost(
                                     onRmsChanged = { rms ->
                                         homeChatViewModel.onAudioRmsChanged(rms)
                                     },
-                                    onError = {
-                                        homeChatViewModel.onCancelVoiceRecording()
+                                    onError = { errorMsg ->
+                                        homeChatViewModel.onVoiceTranscriptionReceived("Error al transcribir: $errorMsg")
                                     },
                                 )
                             }
@@ -387,6 +389,13 @@ fun FenixRootNavHost(
                         homeChatViewModel.onCancelVoiceRecording()
                     },
                     onNewConversationClick = homeChatViewModel::onNewChatSession,
+                    onDismissMissingGroqKeyDialog = { homeChatViewModel.onShowMissingGroqKeyDialog(false) },
+                    onOpenGroqConfigDialog = { homeChatViewModel.onShowGroqConfigDialog(true) },
+                    onDismissGroqConfigDialog = { homeChatViewModel.onShowGroqConfigDialog(false) },
+                    onSaveGroqApiKey = { key ->
+                        voiceToTextEngine.setApiKey(key)
+                    },
+                    currentGroqApiKey = voiceToTextEngine.preferences.getApiKey(),
                 )
             }
 

@@ -69,6 +69,8 @@ data class HomeChatUiState(
     val isLsaOverlayVisible: Boolean = false,
     val otaBannerNotice: String? = null,
     val otaDecision: OtaExecutionDecision? = null,
+    val isMissingGroqKeyDialogOpen: Boolean = false,
+    val isGroqConfigDialogOpen: Boolean = false,
 )
 
 /**
@@ -164,6 +166,14 @@ class HomeChatViewModel(
 
     fun onToggleLsaQuickAccess() {
         _uiState.update { it.copy(isLsaOverlayVisible = !it.isLsaOverlayVisible) }
+    }
+
+    fun onShowMissingGroqKeyDialog(show: Boolean) {
+        _uiState.update { it.copy(isMissingGroqKeyDialogOpen = show) }
+    }
+
+    fun onShowGroqConfigDialog(show: Boolean) {
+        _uiState.update { it.copy(isGroqConfigDialogOpen = show) }
     }
 
     /**
