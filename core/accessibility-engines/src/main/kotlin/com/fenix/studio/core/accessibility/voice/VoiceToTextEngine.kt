@@ -14,6 +14,8 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.os.Handler
 import android.os.Looper
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
@@ -85,6 +87,7 @@ class VoiceToTextEngine(
             )
             val config = OfflineRecognizerConfig(
                 modelConfig = modelConfig,
+                hotwordsScore = 1.5f,
             )
             whisperRecognizer = OfflineRecognizer(
                 assetManager = context.assets,
@@ -123,6 +126,19 @@ class VoiceToTextEngine(
             return
         }
 
+        val audioSessionId = audioRecord.audioSessionId
+        val noiseSuppressor = if (NoiseSuppressor.isAvailable()) {
+            try {
+                NoiseSuppressor.create(audioSessionId)?.apply { enabled = true }
+            } catch (_: Exception) { null }
+        } else null
+
+        val agc = if (AutomaticGainControl.isAvailable()) {
+            try {
+                AutomaticGainControl.create(audioSessionId)?.apply { enabled = true }
+            } catch (_: Exception) { null }
+        } else null
+
         val recordedSamples = mutableListOf<Float>()
 
         recordingJob = scope.launch(Dispatchers.IO) {
@@ -149,6 +165,10 @@ class VoiceToTextEngine(
                 }
 
                 try {
+                    noiseSuppressor?.release()
+                    agc?.release()
+                } catch (_: Exception) {}
+                try {
                     audioRecord.stop()
                     audioRecord.release()
                 } catch (_: Exception) {}
@@ -160,7 +180,14 @@ class VoiceToTextEngine(
                 val recognizer = whisperRecognizer
                 if (recognizer != null && recordedSamples.isNotEmpty()) {
                     mainHandler.post { onPartialResult?.invoke("Enviando audio...") }
-                    val stream = recognizer.createStream()
+                    val hotwords = "resumen / análisis / bibliografía / autor / concepto / hipótesis / conclusión / metodología / epistemología / definición / argumento / teoría / síntesis / explicación / cátedra / texto"
+                    val stream = try {
+                        recognizer.createStream(hotwords).apply {
+                            try { setOption("prompt", "Transcripción académica formal en español.") } catch (_: Exception) {}
+                        }
+                    } catch (_: Exception) {
+                        recognizer.createStream()
+                    }
                     stream.acceptWaveform(recordedSamples.toFloatArray(), sampleRate)
                     recognizer.decode(stream)
                     val resultText = recognizer.getResult(stream).text.trim()

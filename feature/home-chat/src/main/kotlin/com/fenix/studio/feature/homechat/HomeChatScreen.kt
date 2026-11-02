@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -633,9 +634,9 @@ private fun ChatMessageBubble(
 
             if (!item.isUser) {
                 Spacer(modifier = Modifier.height(10.dp))
-                Row(
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     OutlinedButton(
                         onClick = onCopyClick,
@@ -661,7 +662,12 @@ private fun ChatMessageBubble(
                                 .semantics { contentDescription = "Reintentar rotando clave de IA" },
                             border = BorderStroke(colors.borderStrokeWidth, colors.outline),
                         ) {
-                            Text("🔄 Reintentar", style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                text = "🔄 Reintentar",
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
                         }
                     }
                 }
