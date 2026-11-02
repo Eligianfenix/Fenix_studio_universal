@@ -74,6 +74,8 @@ data class HomeChatUiState(
     val isMissingAzureTtsKeyDialogOpen: Boolean = false,
     val isAzureTtsConfigDialogOpen: Boolean = false,
     val pendingSpeechText: String? = null,
+    val activeTtsMessageId: String? = null,
+    val isTtsLoading: Boolean = false,
 )
 
 /**
@@ -309,5 +311,17 @@ class HomeChatViewModel(
                 otaBannerNotice = banner,
             )
         }
+    }
+
+    fun onTtsPlaybackRequested(messageId: String) {
+        _uiState.update { it.copy(activeTtsMessageId = messageId, isTtsLoading = true) }
+    }
+
+    fun onTtsPlaybackStarted(messageId: String) {
+        _uiState.update { if (it.activeTtsMessageId == messageId) it.copy(isTtsLoading = false) else it }
+    }
+
+    fun onTtsPlaybackFinished() {
+        _uiState.update { it.copy(activeTtsMessageId = null, isTtsLoading = false) }
     }
 }

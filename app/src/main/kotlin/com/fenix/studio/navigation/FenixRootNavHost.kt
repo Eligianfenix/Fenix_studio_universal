@@ -348,7 +348,19 @@ fun FenixRootNavHost(
                     },
                     onCopyMessageClick = { /* noop */ },
                     onRetryRotatingKeyClick = { /* noop */ },
-                    onSpeakMessageClick = { msg -> ttsEngine.speak(msg.text) },
+                    onSpeakMessageClick = { msg ->
+                        if (state.activeTtsMessageId == msg.messageId) {
+                            ttsEngine.stopReading()
+                            homeChatViewModel.onTtsPlaybackFinished()
+                        } else {
+                            homeChatViewModel.onTtsPlaybackRequested(msg.messageId)
+                            ttsEngine.speak(
+                                text = msg.text,
+                                onPlaybackStart = { homeChatViewModel.onTtsPlaybackStarted(msg.messageId) },
+                                onComplete = { homeChatViewModel.onTtsPlaybackFinished() },
+                            )
+                        }
+                    },
                     onVoiceInputClick = {
                         if (!voiceToTextEngine.hasApiKey()) {
                             homeChatViewModel.onShowMissingGroqKeyDialog(true)

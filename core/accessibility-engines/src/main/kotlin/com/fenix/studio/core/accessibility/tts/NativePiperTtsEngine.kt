@@ -123,6 +123,7 @@ class NativePiperTtsEngine(private val context: Context) {
     suspend fun speak(
         text: String,
         speed: Float = 1.0f,
+        onPlaybackStart: () -> Unit = {},
         onComplete: (Boolean) -> Unit = {},
     ) = withContext(Dispatchers.Default) {
         if (!isInitialized && !initialize()) {
@@ -177,6 +178,7 @@ class NativePiperTtsEngine(private val context: Context) {
 
             currentAudioTrack = track
             track.write(shortArray, 0, shortArray.size)
+            withContext(Dispatchers.Main) { onPlaybackStart() }
             track.play()
 
             val durationMs = (shortArray.size * 1000L) / sampleRate

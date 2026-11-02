@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -60,6 +61,7 @@ import com.fenix.studio.core.designsystem.theme.FenixTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -405,8 +407,13 @@ fun HomeChatScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         items(state.messages, key = { it.messageId }) { msg ->
+                            val isThisMessageActive = state.activeTtsMessageId == msg.messageId
+                            val isThisMessageLoading = isThisMessageActive && state.isTtsLoading
+                            val isThisMessagePlaying = isThisMessageActive && !state.isTtsLoading
                             ChatMessageBubble(
                                 item = msg,
+                                isTtsLoading = isThisMessageLoading,
+                                isSpeaking = isThisMessagePlaying,
                                 onCopyClick = { onCopyMessageClick(msg) },
                                 onSpeakClick = { onSpeakMessageClick(msg) },
                                 onRetryRotatingKeyClick = { onRetryRotatingKeyClick(msg) },
@@ -949,6 +956,8 @@ private fun ModuleQuickCard(
 @Composable
 private fun ChatMessageBubble(
     item: HomeChatMessageItem,
+    isTtsLoading: Boolean = false,
+    isSpeaking: Boolean = false,
     onCopyClick: () -> Unit,
     onSpeakClick: () -> Unit,
     onRetryRotatingKeyClick: () -> Unit,
@@ -1018,10 +1027,24 @@ private fun ChatMessageBubble(
 
                     OutlinedButton(
                         onClick = onSpeakClick,
+                        enabled = !isTtsLoading,
                         modifier = Modifier.fenixMinTouchTarget(),
-                        border = BorderStroke(colors.borderStrokeWidth, colors.primary),
+                        border = BorderStroke(colors.borderStrokeWidth, if (isSpeaking) colors.primary else colors.outline),
                     ) {
-                        Text("🔊 Escuchar", style = MaterialTheme.typography.labelSmall)
+                        if (isTtsLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = colors.primary,
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Generando audio...", style = MaterialTheme.typography.labelSmall)
+                        } else if (isSpeaking) {
+                            Text("⏹️ Detener audio", style = MaterialTheme.typography.labelSmall, color = colors.primary)
+                        } else {
+                            Text("🔊 Escuchar", style = MaterialTheme.typography.labelSmall)
+                        }
                     }
 
                     if (!item.isDeontologicalWarning) {

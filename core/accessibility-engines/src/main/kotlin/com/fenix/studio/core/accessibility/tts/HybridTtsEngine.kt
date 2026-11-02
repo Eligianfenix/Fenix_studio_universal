@@ -196,8 +196,15 @@ class HybridTtsEngine(
      * Sintetiza y reproduce el texto con el modelo neuronal nativo Piper VITS.
      * Cero configuración, cero internet y calidad de voz humana.
      */
-    fun speak(text: String) {
-        if (text.isBlank()) return
+    fun speak(
+        text: String,
+        onPlaybackStart: () -> Unit = {},
+        onComplete: (Boolean) -> Unit = {},
+    ) {
+        if (text.isBlank()) {
+            onComplete(false)
+            return
+        }
         stopReading()
 
         if (piperEngine != null) {
@@ -214,17 +221,23 @@ class HybridTtsEngine(
                 piperEngine.speak(
                     text = text,
                     speed = _playbackState.value.speechRate,
+                    onPlaybackStart = onPlaybackStart,
                     onComplete = { success ->
                         if (success) {
                             _playbackState.update { it.copy(status = TtsPlaybackStatus.FINISHED) }
+                            onComplete(true)
                         } else {
+                            onPlaybackStart()
                             speakWithNativeFallback(text)
+                            onComplete(false)
                         }
                     }
                 )
             }
         } else {
+            onPlaybackStart()
             speakWithNativeFallback(text)
+            onComplete(false)
         }
     }
 
