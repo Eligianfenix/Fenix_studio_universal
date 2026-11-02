@@ -20,20 +20,35 @@ import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 
 /**
  * Motor de Texto a Voz (TTS) Neuronal 100% Nativo y Soberano a Costo $0 (`MF-8.2`).
- * Ejecuta el modelo Piper VITS en el chip del dispositivo vía sherpa-onnx.
- * Cero cuentas, cero servidores, cero APIs, cero internet y timbre humano natural.
+ * Ejecuta el modelo Piper VITS en el chip del dispositivo vía sherpa-onnx con
+ * streaming por cláusulas en tiempo real y pausas gramaticales calibradas.
  */
 class NativePiperTtsEngine(private val context: Context) {
 
+    private data class SpeechSegment(
+        val text: String,
+        val pauseAfterMs: Int,
+    )
+
     private var tts: OfflineTts? = null
     private var isInitialized = false
+    @Volatile
     private var currentAudioTrack: AudioTrack? = null
+    private val stopRequested = AtomicBoolean(false)
+    private val synthesisMutex = Mutex()
 
     private fun ensureAssetsExtracted(destDir: File) {
         val marker = File(destDir, ".extracted_marker_davefx_v2")
@@ -101,9 +116,10 @@ class NativePiperTtsEngine(private val context: Context) {
                 noiseScaleW = 0.8f,
                 lengthScale = 1.0f,
             )
+            val optimalThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
             val modelConfig = OfflineTtsModelConfig(
                 vits = vitsConfig,
-                numThreads = 2,
+                numThreads = optimalThreads,
                 provider = "cpu",
             )
             val ttsConfig = OfflineTtsConfig(
@@ -120,12 +136,78 @@ class NativePiperTtsEngine(private val context: Context) {
         }
     }
 
+    private fun parseIntoGrammaticalSegments(rawText: String): List<SpeechSegment> {
+        val cleaned = rawText
+            .replace(Regex("[*_`~#]+"), "")
+            .replace(Regex("(?m)^\\s*[-•]\\s+"), "")
+            .trim()
+        if (cleaned.isEmpty()) return emptyList()
+
+        val result = mutableListOf<SpeechSegment>()
+        val paragraphs = cleaned.split(Regex("\\n+")).map { it.trim() }.filter { it.isNotEmpty() }
+
+        val clauseRegex = Regex("([^.,;:?!…]+([.,;:?!…]+|$))")
+
+        for (pIndex in paragraphs.indices) {
+            val paragraph = paragraphs[pIndex]
+            val matches = clauseRegex.findAll(paragraph).map { it.value.trim() }.filter { it.isNotEmpty() }.toList()
+
+            for (mIndex in matches.indices) {
+                val clause = matches[mIndex]
+                val isLastInParagraph = (mIndex == matches.lastIndex)
+                val lastChar = clause.lastOrNull() ?: '.'
+
+                val pauseMs = when {
+                    isLastInParagraph && pIndex < paragraphs.lastIndex -> 950 // Punto aparte
+                    isLastInParagraph -> 300 // Final del texto
+                    lastChar == '.' || lastChar == '?' || lastChar == '!' || lastChar == '…' -> 620 // Punto seguido
+                    lastChar == ';' || lastChar == ':' -> 420 // Punto y coma / Dos puntos
+                    lastChar == ',' -> 260 // Coma
+                    else -> 260
+                }
+                result.add(SpeechSegment(text = clause, pauseAfterMs = pauseMs))
+            }
+        }
+        return result
+    }
+
+    private fun buildPcmWithSilence(samples: FloatArray, sampleRate: Int, pauseAfterMs: Int): ShortArray {
+        var startIdx = 0
+        val silenceThreshold = 0.004f
+        while (startIdx < samples.size && abs(samples[startIdx]) < silenceThreshold) {
+            startIdx++
+        }
+        var endIdx = samples.lastIndex
+        while (endIdx > startIdx && abs(samples[endIdx]) < silenceThreshold) {
+            endIdx--
+        }
+        if (startIdx >= endIdx) return ShortArray(0)
+
+        val activeCount = endIdx - startIdx + 1
+        val silenceSamples = (sampleRate * pauseAfterMs) / 1000
+        val fadeSamples = minOf(activeCount / 10, (sampleRate * 12) / 1000).coerceAtLeast(1)
+
+        val out = ShortArray(activeCount + silenceSamples)
+        for (i in 0 until activeCount) {
+            var s = samples[startIdx + i]
+            if (i < fadeSamples) {
+                s *= (i.toFloat() / fadeSamples)
+            } else if (i >= activeCount - fadeSamples) {
+                s *= ((activeCount - 1 - i).toFloat() / fadeSamples)
+            }
+            val pcm = (s * 32767.0f).coerceIn(-32768.0f, 32767.0f)
+            out[i] = pcm.toInt().toShort()
+        }
+        return out
+    }
+
     suspend fun speak(
         text: String,
         speed: Float = 1.0f,
         onPlaybackStart: () -> Unit = {},
         onComplete: (Boolean) -> Unit = {},
     ) = withContext(Dispatchers.Default) {
+        stop()
         if (!isInitialized && !initialize()) {
             onComplete(false)
             return@withContext
@@ -135,66 +217,107 @@ class NativePiperTtsEngine(private val context: Context) {
             return@withContext
         }
 
-        try {
-            stop()
-            val audio = ttsInstance.generate(text, sid = 0, speed = speed)
-            if (audio.samples.isEmpty()) {
-                Log.w("FenixPiperTts", "Piper VITS generó 0 muestras de audio para el texto.")
-                onComplete(false)
-                return@withContext
-            }
+        val segments = parseIntoGrammaticalSegments(text)
+        if (segments.isEmpty()) {
+            onComplete(false)
+            return@withContext
+        }
 
-            val shortArray = ShortArray(audio.samples.size)
-            for (i in audio.samples.indices) {
-                val sample = (audio.samples[i] * 32767.0f).coerceIn(-32768.0f, 32767.0f)
-                shortArray[i] = sample.toInt().toShort()
-            }
+        stopRequested.set(false)
+        val sampleRate = ttsInstance.sampleRate().takeIf { it > 0 } ?: 22050
+        val minBuf = AudioTrack.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        )
+        val streamBufferSize = maxOf(minBuf * 2, sampleRate * 2)
 
-            val sampleRate = audio.sampleRate
-            val minBuf = AudioTrack.getMinBufferSize(
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
             )
-            val bufferSize = maxOf(minBuf, shortArray.size * 2)
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(streamBufferSize)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
 
-            val track = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build()
-                )
-                .setBufferSizeInBytes(bufferSize)
-                .setTransferMode(AudioTrack.MODE_STATIC)
-                .build()
+        currentAudioTrack = track
+        var hasStartedPlayback = false
 
-            currentAudioTrack = track
-            track.write(shortArray, 0, shortArray.size)
-            withContext(Dispatchers.Main) { onPlaybackStart() }
-            track.play()
+        try {
+            coroutineScope {
+                val pcmChannel = Channel<ShortArray>(capacity = 6)
 
-            val durationMs = (shortArray.size * 1000L) / sampleRate
-            delay(durationMs + 80)
-            track.stop()
+                val producerJob = launch(Dispatchers.Default) {
+                    for (segment in segments) {
+                        if (!isActive || stopRequested.get()) break
+                        val audio = synthesisMutex.withLock {
+                            if (stopRequested.get()) null
+                            else ttsInstance.generate(segment.text, sid = 0, speed = speed)
+                        } ?: break
+
+                        if (audio.samples.isNotEmpty() && !stopRequested.get()) {
+                            val pcm = buildPcmWithSilence(audio.samples, audio.sampleRate, segment.pauseAfterMs)
+                            if (pcm.isNotEmpty()) {
+                                pcmChannel.send(pcm)
+                            }
+                        }
+                    }
+                    pcmChannel.close()
+                }
+
+                for (pcmChunk in pcmChannel) {
+                    if (!isActive || stopRequested.get()) break
+                    if (!hasStartedPlayback) {
+                        hasStartedPlayback = true
+                        track.play()
+                        withContext(Dispatchers.Main) { onPlaybackStart() }
+                    }
+                    var offset = 0
+                    while (offset < pcmChunk.size && !stopRequested.get() && isActive) {
+                        val written = track.write(pcmChunk, offset, pcmChunk.size - offset, AudioTrack.WRITE_BLOCKING)
+                        if (written <= 0) break
+                        offset += written
+                    }
+                }
+
+                producerJob.cancel()
+            }
+
+            if (!stopRequested.get()) {
+                track.stop()
+            }
             track.release()
-            currentAudioTrack = null
-            onComplete(true)
+            if (currentAudioTrack === track) {
+                currentAudioTrack = null
+            }
+            onComplete(hasStartedPlayback)
         } catch (e: Throwable) {
-            Log.e("FenixPiperTts", "Error durante la síntesis: ${e.message}", e)
+            Log.e("FenixPiperTts", "Error durante síntesis en streaming: ${e.message}", e)
+            try {
+                track.release()
+            } catch (_: Exception) {}
+            if (currentAudioTrack === track) {
+                currentAudioTrack = null
+            }
             onComplete(false)
         }
     }
 
     fun stop() {
+        stopRequested.set(true)
         try {
+            currentAudioTrack?.pause()
+            currentAudioTrack?.flush()
             currentAudioTrack?.stop()
             currentAudioTrack?.release()
             currentAudioTrack = null
