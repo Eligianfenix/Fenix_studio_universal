@@ -256,11 +256,13 @@ fun FenixRootNavHost(
                         when (destination) {
                             FenixHubDestination.P02_HOME_CHAT -> {}
                             FenixHubDestination.P03_SETTINGS -> navController.navigate(FenixDestinations.P03_SETTINGS)
-                            FenixHubDestination.P04_BYOK_VAULT -> navController.navigate(FenixDestinations.P04_BYOK_VAULT)
+                            FenixHubDestination.P04_BYOK_VAULT,
+                            FenixHubDestination.GET_CREDITS -> navController.navigate(FenixDestinations.P04_BYOK_VAULT)
                             FenixHubDestination.P05_PROCESSOR -> navController.navigate(FenixDestinations.P05_PROCESSOR_CONFIG)
                             FenixHubDestination.P07_CLASSROOMS -> navController.navigate(FenixDestinations.P07_CLASSROOMS)
                             FenixHubDestination.P09_FENIX_DOCS -> navController.navigate(FenixDestinations.P09_FENIX_DOCS)
                             FenixHubDestination.P10_COMMUNITY -> navController.navigate(FenixDestinations.P10_COMMUNITY)
+                            FenixHubDestination.DEEP_RESEARCH -> homeChatViewModel.onActivateDeepResearchMode()
                         }
                     },
                     onCopyMessageClick = { /* noop */ },

@@ -28,10 +28,12 @@ enum class FenixHubDestination(val displayLabel: String) {
     P02_HOME_CHAT("Chat Inicial Académico"),
     P03_SETTINGS("Ajustes y Accesibilidad"),
     P04_BYOK_VAULT("Bóveda Criptográfica BYOK"),
-    P05_PROCESSOR("Procesador Académico Autónomo"),
+    P05_PROCESSOR("Procesador Académico"),
     P07_CLASSROOMS("Mis Aulas"),
     P09_FENIX_DOCS("Fenix Docs (APA 7.ª)"),
-    P10_COMMUNITY("Comunidad y Sitios Útiles"),
+    P10_COMMUNITY("Comunidad y Recursos"),
+    DEEP_RESEARCH("Investigación Profunda"),
+    GET_CREDITS("Conseguir Créditos"),
 }
 
 /**
@@ -187,6 +189,16 @@ class HomeChatViewModel(
 
     fun onShowAzureTtsConfigDialog(show: Boolean) {
         _uiState.update { it.copy(isAzureTtsConfigDialogOpen = show) }
+    }
+
+    fun onActivateDeepResearchMode() {
+        _uiState.update { current ->
+            current.copy(
+                chatInputState = current.chatInputState.copy(
+                    promptText = "[Investigación Profunda] Tema a investigar: ",
+                ),
+            )
+        }
     }
 
     /**

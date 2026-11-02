@@ -256,6 +256,13 @@ fun HomeChatScreen(
                             },
                         )
                         DrawerNavigationItem(
+                            label = "🔬 Investigación Profunda",
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                onNavigateToDestination(FenixHubDestination.DEEP_RESEARCH)
+                            },
+                        )
+                        DrawerNavigationItem(
                             label = "✍️ Fenix Docs (APA 7.ª)",
                             onClick = {
                                 scope.launch { drawerState.close() }
@@ -263,14 +270,21 @@ fun HomeChatScreen(
                             },
                         )
                         DrawerNavigationItem(
-                            label = "🌐 Comunidad & Recursos",
+                            label = "🌐 Comunidad y Recursos",
                             onClick = {
                                 scope.launch { drawerState.close() }
                                 onNavigateToDestination(FenixHubDestination.P10_COMMUNITY)
                             },
                         )
                         DrawerNavigationItem(
-                            label = "⚙️ Ajustes & Accesibilidad",
+                            label = "⚡ Conseguir Créditos",
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                onNavigateToDestination(FenixHubDestination.GET_CREDITS)
+                            },
+                        )
+                        DrawerNavigationItem(
+                            label = "⚙️ Ajustes y Accesibilidad",
                             onClick = {
                                 scope.launch { drawerState.close() }
                                 onNavigateToDestination(FenixHubDestination.P03_SETTINGS)
@@ -809,7 +823,7 @@ private fun DrawerNavigationItem(
 }
 
 /**
- * Lienzo de bienvenida con saludo empático y acceso rápido a los 4 módulos soberanos de Fénix Studio.
+ * Lienzo de bienvenida con saludo empático y acceso rápido con scroll a las herramientas de Fénix Studio.
  */
 @Composable
 private fun EmptyStateWelcomeCanvas(
@@ -819,10 +833,14 @@ private fun EmptyStateWelcomeCanvas(
     val colors = FenixTheme.colors
 
     Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.Center,
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Spacer(modifier = Modifier.height(8.dp))
+
         Text(
             text = "¿Qué vamos a estudiar hoy?",
             style = MaterialTheme.typography.headlineSmall,
@@ -834,56 +852,72 @@ private fun EmptyStateWelcomeCanvas(
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = "Escribe tu consulta académica o selecciona un módulo de trabajo:",
+            text = "Escribe tu consulta académica o selecciona una herramienta:",
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onSurfaceVariant,
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             ModuleQuickCard(
+                icon = "📄",
                 title = "Procesador Académico",
-                description = "Sintetizar apuntes, extraer ejes y generar matrices curriculares.",
-                tag = "📄 Módulo P-05",
+                description = "Sintetizar apuntes, extraer ejes y armar programas de estudio.",
                 onClick = { onNavigateToDestination(FenixHubDestination.P05_PROCESSOR) },
             )
 
             ModuleQuickCard(
-                title = "Mis Aulas y FSRS v6",
-                description = "Planificación de cátedras y repaso espaciado adaptativo.",
-                tag = "🏛️ Módulo P-07",
+                icon = "🏛️",
+                title = "Mis Aulas",
+                description = "Organiza tus materias, apuntes y tarjetas de repaso para exámenes.",
                 onClick = { onNavigateToDestination(FenixHubDestination.P07_CLASSROOMS) },
             )
 
             ModuleQuickCard(
+                icon = "🔬",
+                title = "Investigación Profunda",
+                description = "Búsqueda académica exhaustiva y análisis profundo de fuentes verificadas.",
+                onClick = { onNavigateToDestination(FenixHubDestination.DEEP_RESEARCH) },
+            )
+
+            ModuleQuickCard(
+                icon = "✍️",
                 title = "Fenix Docs (APA 7.ª)",
-                description = "Editor con 20 herramientas de citación, estilo y verificación.",
-                tag = "✍️ Módulo P-09",
+                description = "Editor académico con herramientas de citación, estilo y formato.",
                 onClick = { onNavigateToDestination(FenixHubDestination.P09_FENIX_DOCS) },
             )
 
             ModuleQuickCard(
-                title = "Comunidad & Recursos",
-                description = "Catálogo de 70 repositorios académicos abiertos sin costo.",
-                tag = "🌐 Módulo P-10",
+                icon = "🌐",
+                title = "Comunidad y Recursos",
+                description = "Catálogo de 70 bibliotecas y repositorios académicos abiertos sin costo.",
                 onClick = { onNavigateToDestination(FenixHubDestination.P10_COMMUNITY) },
             )
+
+            ModuleQuickCard(
+                icon = "⚡",
+                title = "Conseguir Créditos",
+                description = "Amplía tu capacidad de procesamiento con llaves gratuitas o el programa colaborador.",
+                onClick = { onNavigateToDestination(FenixHubDestination.GET_CREDITS) },
+            )
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
 /**
- * Tarjeta táctil accesible para acceso rápido a un módulo.
+ * Tarjeta táctil accesible para acceso rápido a una herramienta (sin códigos internos P-XX).
  */
 @Composable
 private fun ModuleQuickCard(
+    icon: String,
     title: String,
     description: String,
-    tag: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -914,15 +948,14 @@ private fun ModuleQuickCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
+                        text = icon,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = tag,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.primary,
-                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
                     )
                 }
                 Spacer(modifier = Modifier.height(4.dp))
