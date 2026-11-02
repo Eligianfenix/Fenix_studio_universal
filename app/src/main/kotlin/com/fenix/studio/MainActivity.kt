@@ -3,7 +3,7 @@
  * PROYECTO: FÉNIX STUDIO — PLATAFORMA DE ACCESIBILIDAD Y PROCESAMIENTO ACADÉMICO
  * PROPIEDAD INTELECTUAL Y AUTORÍA ORIGINAL: Eli Gian Cortez Leonardi
  * LOCALIDAD: San Juan, Argentina
- * FECHA Y HORA: 2026-11-02 17:55:00 -03:00
+ * FECHA Y HORA: 2026-11-02 18:19:00 -03:00
  * ARCHIVO: app/src/main/kotlin/com/fenix/studio/MainActivity.kt
  * ================================================================================
  */
@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import com.fenix.studio.core.designsystem.components.FenixEmberSplashOverlay
 import com.fenix.studio.core.designsystem.theme.FenixTheme
@@ -43,7 +44,9 @@ class MainActivity : ComponentActivity() {
                 var showSplash by rememberSaveable { mutableStateOf(true) }
                 LaunchedEffect(Unit) {
                     if (showSplash) {
-                        delay(2600L)
+                        // Espera a que el primer fotograma de la animación esté realmente en pantalla
+                        withFrameNanos { }
+                        delay(4500L)
                         showSplash = false
                     }
                 }
