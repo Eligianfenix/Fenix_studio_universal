@@ -40,6 +40,14 @@ import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
 /**
+ * Turno conversacional previo para preservar contexto y memoria multi-turno en el chat.
+ */
+data class TeacherChatHistoryTurn(
+    val role: String, // "user" o "assistant"
+    val content: String,
+)
+
+/**
  * Definición de un proveedor Zero-Config / Keyless en el pool de "Fenix Teacher".
  * Cumple estrictamente con RN-08 (Cero Hardcodeo de Modelos): solo declara las URLs de
  * autodescubrimiento (`modelsDiscoveryUrl`) y de inferencia (`chatCompletionsUrl`).
@@ -177,12 +185,14 @@ class FenixTeacherKeylessService {
 
     /**
      * Envía la consulta del estudiante utilizando las rutas autodescubiertas en vivo.
+     * Incluye memoria de conversación multi-turno (conversationHistory) para mantener coherencia contextual.
      * Lanza peticiones en paralelo (Hedged Racing de a 2 rutas) para garantizar respuesta rápida (~1.5s)
      * y tolerancia total a fallos sin esperas largas.
      */
     suspend fun sendChatToFenixTeacher(
         userPrompt: String,
         systemInstruction: String,
+        conversationHistory: List<TeacherChatHistoryTurn> = emptyList(),
         startEndpointIndex: Int = 0,
     ): String = withContext(Dispatchers.IO) {
         var routes = discoverLiveKeylessRoutes(forceRefresh = false)
@@ -205,6 +215,7 @@ class FenixTeacherKeylessService {
                     batch = batch,
                     systemInstruction = systemInstruction,
                     userPrompt = userPrompt,
+                    conversationHistory = conversationHistory,
                 )
                 if (!winner.isNullOrBlank()) {
                     return@withContext winner.trim()
@@ -219,16 +230,17 @@ class FenixTeacherKeylessService {
         batch: List<DiscoveredKeylessRoute>,
         systemInstruction: String,
         userPrompt: String,
+        conversationHistory: List<TeacherChatHistoryTurn>,
     ): String? = coroutineScope {
         if (batch.size == 1) {
-            return@coroutineScope trySingleRoute(batch[0], systemInstruction, userPrompt)
+            return@coroutineScope trySingleRoute(batch[0], systemInstruction, userPrompt, conversationHistory)
         }
 
         val childScope = CoroutineScope(coroutineContext + SupervisorJob())
         try {
             val deferredList = batch.map { route ->
                 childScope.async(Dispatchers.IO) {
-                    trySingleRoute(route, systemInstruction, userPrompt)
+                    trySingleRoute(route, systemInstruction, userPrompt, conversationHistory)
                 }
             }
 
@@ -261,6 +273,7 @@ class FenixTeacherKeylessService {
         route: DiscoveredKeylessRoute,
         systemInstruction: String,
         userPrompt: String,
+        conversationHistory: List<TeacherChatHistoryTurn>,
     ): String? {
         val t0 = System.currentTimeMillis()
         val response = runCatching {
@@ -268,6 +281,7 @@ class FenixTeacherKeylessService {
                 route = route,
                 systemInstruction = systemInstruction,
                 userPrompt = userPrompt,
+                conversationHistory = conversationHistory,
             )
         }.getOrNull()
 
@@ -364,6 +378,7 @@ class FenixTeacherKeylessService {
         route: DiscoveredKeylessRoute,
         systemInstruction: String,
         userPrompt: String,
+        conversationHistory: List<TeacherChatHistoryTurn> = emptyList(),
     ): String? {
         val url = URL(route.gateway.chatCompletionsUrl)
         val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -385,12 +400,23 @@ class FenixTeacherKeylessService {
                 put(
                     "messages",
                     buildJsonArray {
+                        // 1. System prompt (personalidad y encuadre pedagógico)
                         add(
                             buildJsonObject {
                                 put("role", "system")
                                 put("content", systemInstruction)
                             },
                         )
+                        // 2. Historial conversacional previo (hasta 10 turnos para memoria multi-turno sin saturar tokens)
+                        conversationHistory.takeLast(10).forEach { turn ->
+                            add(
+                                buildJsonObject {
+                                    put("role", turn.role)
+                                    put("content", turn.content)
+                                },
+                            )
+                        }
+                        // 3. Turno actual del usuario
                         add(
                             buildJsonObject {
                                 put("role", "user")

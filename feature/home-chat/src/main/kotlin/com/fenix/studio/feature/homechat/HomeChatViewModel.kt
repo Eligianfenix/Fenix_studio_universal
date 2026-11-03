@@ -10,6 +10,7 @@
 
 package com.fenix.studio.feature.homechat
 
+import android.content.Context
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +19,7 @@ import com.fenix.studio.core.designsystem.components.FenixSelectableModel
 import com.fenix.studio.core.designsystem.components.UniversalChatInputUiState
 import com.fenix.studio.core.network.model.FenixStreamEvent
 import com.fenix.studio.core.network.teacher.FenixTeacherKeylessService
+import com.fenix.studio.core.network.teacher.TeacherChatHistoryTurn
 import com.fenix.studio.domain.protocolv3.validation.AcademicDeontologicalGuard
 import com.fenix.studio.domain.protocolv3.validation.DeontologicalDecision
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,6 +73,7 @@ data class HistoricalSessionItem(
  */
 @Immutable
 data class HomeChatUiState(
+    val currentSessionId: String = "session-${System.currentTimeMillis()}",
     val selectedClassroomId: String? = null,
     val chatInputState: UniversalChatInputUiState = UniversalChatInputUiState(),
     val messages: List<HomeChatMessageItem> = emptyList(),
@@ -99,6 +102,22 @@ class HomeChatViewModel(
     private val _uiState = MutableStateFlow(HomeChatUiState())
     val uiState: StateFlow<HomeChatUiState> = _uiState.asStateFlow()
     private var rotatingEndpointCursor: Int = 0
+    private var sessionStorage: HomeChatSessionStorage? = null
+
+    /**
+     * Inicializa el almacenamiento persistente local (`HomeChatSessionStorage`) y restaura las sesiones.
+     */
+    fun initializeStorage(context: Context) {
+        if (sessionStorage != null) return
+        val storage = HomeChatSessionStorage(context)
+        sessionStorage = storage
+        val historical = storage.loadHistoricalSessions()
+        _uiState.update { current ->
+            current.copy(
+                historicalSessions = historical,
+            )
+        }
+    }
 
     fun onSelectModel(model: FenixSelectableModel) {
         _uiState.update { current ->
@@ -246,25 +265,40 @@ class HomeChatViewModel(
     }
 
     /**
-     * Inicia una nueva sesión conversacional archivando la actual si contenía mensajes.
+     * Inicia una nueva sesión conversacional archivando y persistiendo la actual en almacenamiento local.
      */
     fun onNewChatSession() {
-        _uiState.update { current ->
-            if (current.messages.isNotEmpty()) {
-                val firstUserMsg = current.messages.firstOrNull { it.isUser }?.text?.take(35) ?: "Sesión académica"
-                val lastMsg = current.messages.lastOrNull()?.text?.take(40) ?: ""
-                val newSession = HistoricalSessionItem(
-                    id = "session-${System.currentTimeMillis()}",
-                    title = firstUserMsg,
-                    preview = lastMsg,
-                )
-                current.copy(
-                    messages = emptyList(),
-                    historicalSessions = listOf(newSession) + current.historicalSessions,
-                )
-            } else {
-                current.copy(messages = emptyList())
-            }
+        val current = _uiState.value
+        if (current.messages.isNotEmpty()) {
+            sessionStorage?.saveSession(current.currentSessionId, current.messages)
+        }
+        val refreshed = sessionStorage?.loadHistoricalSessions() ?: current.historicalSessions
+        val newSessionId = "session-${System.currentTimeMillis()}"
+        _uiState.update { state ->
+            state.copy(
+                currentSessionId = newSessionId,
+                messages = emptyList(),
+                historicalSessions = refreshed,
+            )
+        }
+    }
+
+    /**
+     * Carga y activa una sesión histórica tocada desde el menú lateral (`ModalNavigationDrawer`).
+     */
+    fun onSelectHistoricalSession(session: HistoricalSessionItem) {
+        val current = _uiState.value
+        if (current.messages.isNotEmpty()) {
+            sessionStorage?.saveSession(current.currentSessionId, current.messages)
+        }
+        val loadedMessages = sessionStorage?.loadSessionMessages(session.id).orEmpty()
+        val refreshed = sessionStorage?.loadHistoricalSessions() ?: current.historicalSessions
+        _uiState.update { state ->
+            state.copy(
+                currentSessionId = session.id,
+                messages = loadedMessages,
+                historicalSessions = refreshed,
+            )
         }
     }
 
@@ -358,6 +392,12 @@ class HomeChatViewModel(
         val activeMode = _uiState.value.chatInputState.agentMode
         val nowMs = System.currentTimeMillis()
         val replyMsgId = "msg-$nowMs-ai"
+        val activeSessionId = _uiState.value.currentSessionId
+
+        // Construimos el historial de memoria conversacional previa (omitiendo pensando y avisos deontológicos)
+        val conversationHistory = _uiState.value.messages
+            .filterNot { it.isThinking || it.isDeontologicalWarning }
+            .map { TeacherChatHistoryTurn(role = if (it.isUser) "user" else "assistant", content = it.text) }
 
         _uiState.update { state ->
             val userMsg = HomeChatMessageItem(
@@ -394,22 +434,27 @@ class HomeChatViewModel(
             val aiReply = fenixTeacherService.sendChatToFenixTeacher(
                 userPrompt = currentPrompt,
                 systemInstruction = systemPrompt,
+                conversationHistory = conversationHistory,
                 startEndpointIndex = startIdx,
             )
 
             _uiState.update { state ->
+                val updatedMessages = state.messages.map { msg ->
+                    if (msg.messageId == replyMsgId) {
+                        msg.copy(
+                            text = aiReply,
+                            senderLabel = activeModel.displayName,
+                            isThinking = false,
+                        )
+                    } else {
+                        msg
+                    }
+                }
+                sessionStorage?.saveSession(activeSessionId, updatedMessages)
+                val refreshedSessions = sessionStorage?.loadHistoricalSessions() ?: state.historicalSessions
                 state.copy(
-                    messages = state.messages.map { msg ->
-                        if (msg.messageId == replyMsgId) {
-                            msg.copy(
-                                text = aiReply,
-                                senderLabel = activeModel.displayName,
-                                isThinking = false,
-                            )
-                        } else {
-                            msg
-                        }
-                    },
+                    messages = updatedMessages,
+                    historicalSessions = refreshedSessions,
                     chatInputState = state.chatInputState.copy(
                         isStreamingResponse = false,
                     ),
@@ -427,6 +472,11 @@ class HomeChatViewModel(
 
         val activeModel = _uiState.value.chatInputState.selectedModel
         val activeMode = _uiState.value.chatInputState.agentMode
+        val activeSessionId = _uiState.value.currentSessionId
+
+        val conversationHistory = currentMessages.subList(0, idx)
+            .filterNot { it.isThinking || it.isDeontologicalWarning || it.messageId == precedingUserMsg.messageId }
+            .map { TeacherChatHistoryTurn(role = if (it.isUser) "user" else "assistant", content = it.text) }
 
         _uiState.update { state ->
             state.copy(
@@ -449,22 +499,27 @@ class HomeChatViewModel(
             val aiReply = fenixTeacherService.sendChatToFenixTeacher(
                 userPrompt = precedingUserMsg.text,
                 systemInstruction = systemPrompt,
+                conversationHistory = conversationHistory,
                 startEndpointIndex = startIdx,
             )
 
             _uiState.update { state ->
+                val updatedMessages = state.messages.map { msg ->
+                    if (msg.messageId == item.messageId) {
+                        msg.copy(
+                            text = aiReply,
+                            senderLabel = activeModel.displayName,
+                            isThinking = false,
+                        )
+                    } else {
+                        msg
+                    }
+                }
+                sessionStorage?.saveSession(activeSessionId, updatedMessages)
+                val refreshedSessions = sessionStorage?.loadHistoricalSessions() ?: state.historicalSessions
                 state.copy(
-                    messages = state.messages.map { msg ->
-                        if (msg.messageId == item.messageId) {
-                            msg.copy(
-                                text = aiReply,
-                                senderLabel = activeModel.displayName,
-                                isThinking = false,
-                            )
-                        } else {
-                            msg
-                        }
-                    },
+                    messages = updatedMessages,
+                    historicalSessions = refreshedSessions,
                     chatInputState = state.chatInputState.copy(isStreamingResponse = false),
                 )
             }

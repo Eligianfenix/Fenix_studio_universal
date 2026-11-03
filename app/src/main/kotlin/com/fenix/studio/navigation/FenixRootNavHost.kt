@@ -130,6 +130,7 @@ fun FenixRootNavHost(
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
+        homeChatViewModel.initializeStorage(context.applicationContext)
         val savedModeName = accessibilityPrefs.getString("theme_mode", null)
         val savedMode = savedModeName?.let {
             runCatching { com.fenix.studio.core.designsystem.theme.FenixThemeMode.valueOf(it) }.getOrNull()
@@ -335,6 +336,7 @@ fun FenixRootNavHost(
                     onModelSelected = homeChatViewModel::onSelectModel,
                     onAgentModeChange = homeChatViewModel::onSelectAgentMode,
                     onNewConversationClick = homeChatViewModel::onNewChatSession,
+                    onSelectHistoricalSession = homeChatViewModel::onSelectHistoricalSession,
                     onDismissMissingGroqKeyDialog = { homeChatViewModel.onShowMissingGroqKeyDialog(false) },
                     onOpenGroqConfigDialog = { homeChatViewModel.onShowGroqConfigDialog(true) },
                     onDismissGroqConfigDialog = { homeChatViewModel.onShowGroqConfigDialog(false) },
