@@ -53,6 +53,7 @@ data class HomeChatMessageItem(
     val senderLabel: String = "Fenix Teacher",
     val activeSlotIndex: Int? = null,
     val isDeontologicalWarning: Boolean = false,
+    val isThinking: Boolean = false,
 )
 
 /**
@@ -368,9 +369,10 @@ class HomeChatViewModel(
             val thinkingMsg = HomeChatMessageItem(
                 messageId = replyMsgId,
                 isUser = false,
-                text = "⏳ ${activeModel.displayName} está elaborando tu respuesta...",
+                text = "Pensando...",
                 senderLabel = activeModel.displayName,
                 activeSlotIndex = 0,
+                isThinking = true,
             )
             state.copy(
                 messages = state.messages + listOf(userMsg, thinkingMsg),
@@ -387,7 +389,7 @@ class HomeChatViewModel(
         viewModelScope.launch {
             val systemPrompt = buildSystemPromptForMode(activeMode)
             val startIdx = rotatingEndpointCursor
-            rotatingEndpointCursor = (rotatingEndpointCursor + 1) % FenixTeacherKeylessService.KEYLESS_ENDPOINTS.size
+            rotatingEndpointCursor += 1
 
             val aiReply = fenixTeacherService.sendChatToFenixTeacher(
                 userPrompt = currentPrompt,
@@ -402,6 +404,7 @@ class HomeChatViewModel(
                             msg.copy(
                                 text = aiReply,
                                 senderLabel = activeModel.displayName,
+                                isThinking = false,
                             )
                         } else {
                             msg
@@ -410,6 +413,59 @@ class HomeChatViewModel(
                     chatInputState = state.chatInputState.copy(
                         isStreamingResponse = false,
                     ),
+                )
+            }
+        }
+    }
+
+    fun onRetryMessage(item: HomeChatMessageItem) {
+        if (item.isUser || item.isThinking) return
+        val currentMessages = _uiState.value.messages
+        val idx = currentMessages.indexOfFirst { it.messageId == item.messageId }
+        if (idx <= 0) return
+        val precedingUserMsg = currentMessages.subList(0, idx).lastOrNull { it.isUser } ?: return
+
+        val activeModel = _uiState.value.chatInputState.selectedModel
+        val activeMode = _uiState.value.chatInputState.agentMode
+
+        _uiState.update { state ->
+            state.copy(
+                messages = state.messages.map { msg ->
+                    if (msg.messageId == item.messageId) {
+                        msg.copy(text = "Pensando...", isThinking = true)
+                    } else {
+                        msg
+                    }
+                },
+                chatInputState = state.chatInputState.copy(isStreamingResponse = true),
+            )
+        }
+
+        viewModelScope.launch {
+            val systemPrompt = buildSystemPromptForMode(activeMode)
+            val startIdx = rotatingEndpointCursor
+            rotatingEndpointCursor += 1
+
+            val aiReply = fenixTeacherService.sendChatToFenixTeacher(
+                userPrompt = precedingUserMsg.text,
+                systemInstruction = systemPrompt,
+                startEndpointIndex = startIdx,
+            )
+
+            _uiState.update { state ->
+                state.copy(
+                    messages = state.messages.map { msg ->
+                        if (msg.messageId == item.messageId) {
+                            msg.copy(
+                                text = aiReply,
+                                senderLabel = activeModel.displayName,
+                                isThinking = false,
+                            )
+                        } else {
+                            msg
+                        }
+                    },
+                    chatInputState = state.chatInputState.copy(isStreamingResponse = false),
                 )
             }
         }

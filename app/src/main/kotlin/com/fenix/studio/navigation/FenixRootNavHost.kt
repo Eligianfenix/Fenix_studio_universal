@@ -279,7 +279,7 @@ fun FenixRootNavHost(
                         }
                     },
                     onCopyMessageClick = { /* noop */ },
-                    onRetryRotatingKeyClick = { /* noop */ },
+                    onRetryRotatingKeyClick = homeChatViewModel::onRetryMessage,
                     onSpeakMessageClick = { msg ->
                         if (state.activeTtsMessageId == msg.messageId) {
                             ttsEngine.stopReading()

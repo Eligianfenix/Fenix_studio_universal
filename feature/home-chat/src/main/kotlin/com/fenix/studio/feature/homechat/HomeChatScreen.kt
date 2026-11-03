@@ -1052,12 +1052,31 @@ private fun ChatMessageBubble(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            Text(
-                text = item.text,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            if (item.isThinking) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(vertical = 4.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = colors.primary,
+                    )
+                    Text(
+                        text = item.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            } else {
+                Text(
+                    text = item.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
 
-            if (!item.isUser) {
+            if (!item.isUser && !item.isThinking) {
                 Spacer(modifier = Modifier.height(10.dp))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
