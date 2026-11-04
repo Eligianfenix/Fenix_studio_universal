@@ -127,6 +127,50 @@ sealed interface DebitOutcome {
 }
 
 /**
+ * Consulta previa, sin cobrar, de cuántas divisiones puede procesar el estudiante con su
+ * saldo actual. Es lo que alimenta la pantalla del procesador cuando el docente entregó
+ * una parte del material y todavía no la cátedra completa.
+ */
+data class ProcessorPlan(
+    val requestedDivisions: Int,
+    val affordableDivisions: Int,
+    val deferredDivisions: Int,
+    val requestedCostCc: Long,
+    val affordableCostCc: Long,
+    val grantAvailableCc: Long,
+    val balances: PocketBalances,
+) {
+    val canProcessAllRequested: Boolean get() = deferredDivisions == 0
+}
+
+/**
+ * Resultado de cobrar un lote de divisiones elegido por el estudiante.
+ *
+ * Es **atómico por lote**: o se cubren todas las divisiones pedidas o no se cobra ninguna.
+ * La atomicidad es del lote, no de la cátedra: procesar 2 de 9 divisiones es un caso
+ * normal y esperado.
+ */
+sealed interface BatchDebitOutcome {
+
+    data class Charged(
+        val divisions: Int,
+        val costCc: Long,
+        val perDivision: List<DebitOutcome.Charged>,
+        val balancesAfter: PocketBalances,
+    ) : BatchDebitOutcome
+
+    /** El lote ya había sido cobrado con la misma clave: reanudar no duplica el débito. */
+    data class AlreadyCharged(
+        val divisions: Int,
+        val balancesAfter: PocketBalances,
+    ) : BatchDebitOutcome
+
+    data class Rejected(
+        val plan: ProcessorPlan,
+    ) : BatchDebitOutcome
+}
+
+/**
  * Núcleo contable de la economía de Fénix Studio (`ADR-0008`).
  *
  * Es deliberadamente puro: no conoce Android, Room, Supabase ni la red. La persistencia
@@ -149,6 +193,13 @@ class CreditLedger(initialBalances: PocketBalances = PocketBalances()) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DebitOutcome.Charged>?): Boolean =
             size > MAX_REMEMBERED_KEYS
     }
+
+    /**
+     * Grant consumido por cátedra, en cc. El material llega por partes durante la cursada,
+     * así que el tope de 10 divisiones debe acumularse entre entregas y no reiniciarse
+     * en cada tanda.
+     */
+    private val grantUsedByClassroomCc = mutableMapOf<String, Long>()
 
     fun currentBalances(): PocketBalances = synchronized(lock) { balances }
 
@@ -191,16 +242,17 @@ class CreditLedger(initialBalances: PocketBalances = PocketBalances()) {
         idempotencyKey: String? = null,
     ): DebitOutcome = debit(
         amountCc = amountCc,
-        order = listOf(CreditPocket.CHAT_FREE, CreditPocket.PURCHASED),
+        limits = listOf(
+            PocketLimit(CreditPocket.CHAT_FREE),
+            PocketLimit(CreditPocket.PURCHASED),
+        ),
         idempotencyKey = idempotencyKey,
     )
 
     /**
-     * Debita una división global de procesamiento: primero el grant (bienvenida/beta),
-     * luego el cupo semanal y por último los comprados.
-     *
-     * @param useGrant permite excluir el bolsillo de grant cuando el procesamiento ya
-     *   consumió su tope por cátedra (el excedente se cobra normal, `ADR-0008` §5).
+     * Debita una división global suelta. El material de una cátedra llega por partes, así
+     * que el débito **nunca** se plantea contra la cátedra completa: se cobra la división
+     * que el estudiante decide procesar en ese momento.
      */
     fun debitProcessor(
         amountCc: Long = CreditUnits.PROCESSOR_CREDIT_CC,
@@ -208,13 +260,120 @@ class CreditLedger(initialBalances: PocketBalances = PocketBalances()) {
         useGrant: Boolean = true,
     ): DebitOutcome = debit(
         amountCc = amountCc,
-        order = buildList {
-            if (useGrant) add(CreditPocket.GRANT)
-            add(CreditPocket.PROC_FREE)
-            add(CreditPocket.PURCHASED)
+        limits = buildList {
+            if (useGrant) add(PocketLimit(CreditPocket.GRANT))
+            add(PocketLimit(CreditPocket.PROC_FREE))
+            add(PocketLimit(CreditPocket.PURCHASED))
         },
         idempotencyKey = idempotencyKey,
     )
+
+    /**
+     * Debita una división aplicando el tope de grant **por cátedra**, que acumula entre
+     * entregas parciales: si el docente entrega 2 divisiones en marzo y 3 en abril, el
+     * grant cubre hasta [grantCapCc] en total para esa cátedra, no por tanda.
+     */
+    fun debitProcessorForClassroom(
+        classroomId: String,
+        amountCc: Long = CreditUnits.PROCESSOR_CREDIT_CC,
+        idempotencyKey: String? = null,
+        grantCapCc: Long = CreditPolicy.CLASSROOM_GRANT_CAP_CC,
+    ): DebitOutcome = debit(
+        amountCc = amountCc,
+        limits = buildList {
+            add(PocketLimit(CreditPocket.GRANT, remainingClassroomGrantCc(classroomId, grantCapCc)))
+            add(PocketLimit(CreditPocket.PROC_FREE))
+            add(PocketLimit(CreditPocket.PURCHASED))
+        },
+        idempotencyKey = idempotencyKey,
+        classroomId = classroomId,
+    )
+
+    /** Grant ya consumido por esta cátedra, en cc. */
+    fun classroomGrantUsedCc(classroomId: String): Long = synchronized(lock) {
+        grantUsedByClassroomCc[classroomId] ?: 0L
+    }
+
+    /**
+     * Consulta previa sin cobrar: cuántas divisiones entran con el saldo actual.
+     */
+    fun planProcessorDivisions(
+        requestedDivisions: Int,
+        classroomId: String? = null,
+        grantCapCc: Long = CreditPolicy.CLASSROOM_GRANT_CAP_CC,
+    ): ProcessorPlan = synchronized(lock) {
+        require(requestedDivisions >= 0) { "Las divisiones no pueden ser negativas" }
+
+        val grantAvailableCc = if (classroomId != null) {
+            minOf(balances.grantCc, remainingClassroomGrantCc(classroomId, grantCapCc))
+        } else {
+            balances.grantCc
+        }
+        val availableCc = grantAvailableCc + balances.procFreeCc + balances.purchasedCc
+        val affordable = (availableCc / CreditUnits.PROCESSOR_CREDIT_CC).toInt()
+            .coerceAtMost(requestedDivisions)
+
+        ProcessorPlan(
+            requestedDivisions = requestedDivisions,
+            affordableDivisions = affordable,
+            deferredDivisions = requestedDivisions - affordable,
+            requestedCostCc = requestedDivisions * CreditUnits.PROCESSOR_CREDIT_CC,
+            affordableCostCc = affordable * CreditUnits.PROCESSOR_CREDIT_CC,
+            grantAvailableCc = grantAvailableCc,
+            balances = balances,
+        )
+    }
+
+    /**
+     * Cobra [divisions] divisiones elegidas por el estudiante. Cada división lleva su
+     * propia clave de idempotencia (`<prefix>:div-i`), así reanudar un checkpoint no
+     * duplica el cobro y distintas tandas de material se cobran por separado.
+     */
+    fun debitProcessorDivisions(
+        divisions: Int,
+        idempotencyKeyPrefix: String,
+        classroomId: String? = null,
+        grantCapCc: Long = CreditPolicy.CLASSROOM_GRANT_CAP_CC,
+    ): BatchDebitOutcome = synchronized(lock) {
+        require(divisions > 0) { "Hay que procesar al menos una división" }
+
+        val firstKey = "$idempotencyKeyPrefix:div-0"
+        chargedByKey[firstKey]?.let {
+            return BatchDebitOutcome.AlreadyCharged(divisions = divisions, balancesAfter = balances)
+        }
+
+        val plan = planProcessorDivisions(divisions, classroomId, grantCapCc)
+        if (plan.affordableDivisions < divisions) {
+            return BatchDebitOutcome.Rejected(plan = plan)
+        }
+
+        val perDivision = mutableListOf<DebitOutcome.Charged>()
+        for (index in 0 until divisions) {
+            val key = "$idempotencyKeyPrefix:div-$index"
+            val outcome = if (classroomId != null) {
+                debitProcessorForClassroom(classroomId, idempotencyKey = key, grantCapCc = grantCapCc)
+            } else {
+                debitProcessor(idempotencyKey = key)
+            }
+            when (outcome) {
+                is DebitOutcome.Charged -> perDivision += outcome
+                is DebitOutcome.AlreadyCharged -> perDivision += outcome.previous
+                is DebitOutcome.Rejected -> return BatchDebitOutcome.Rejected(plan = plan)
+            }
+        }
+
+        BatchDebitOutcome.Charged(
+            divisions = divisions,
+            costCc = divisions * CreditUnits.PROCESSOR_CREDIT_CC,
+            perDivision = perDivision,
+            balancesAfter = balances,
+        )
+    }
+
+    private fun remainingClassroomGrantCc(classroomId: String, capCc: Long): Long {
+        val used = grantUsedByClassroomCc[classroomId] ?: 0L
+        return (capCc - used).coerceAtLeast(0L)
+    }
 
     /**
      * Acredita el bono de publicación en el bolsillo `PURCHASED` (`ADR-0008` §10).
@@ -253,8 +412,9 @@ class CreditLedger(initialBalances: PocketBalances = PocketBalances()) {
 
     private fun debit(
         amountCc: Long,
-        order: List<CreditPocket>,
+        limits: List<PocketLimit>,
         idempotencyKey: String?,
+        classroomId: String? = null,
     ): DebitOutcome = synchronized(lock) {
         require(amountCc > 0L) { "El monto a debitar debe ser positivo" }
 
@@ -264,10 +424,12 @@ class CreditLedger(initialBalances: PocketBalances = PocketBalances()) {
             }
         }
 
-        val charges = allocate(amountCc, order)
+        val charges = allocate(amountCc, limits)
             ?: return DebitOutcome.Rejected(
                 requiredCc = amountCc,
-                availableCc = order.sumOf { balances.amountOf(it) },
+                availableCc = limits.sumOf { limit ->
+                    minOf(balances.amountOf(limit.pocket), limit.maxCc)
+                },
                 balances = balances,
             )
 
@@ -276,6 +438,16 @@ class CreditLedger(initialBalances: PocketBalances = PocketBalances()) {
             updated = updated.withAmount(charge.pocket, updated.amountOf(charge.pocket) - charge.amountCc)
         }
         balances = updated
+
+        if (classroomId != null) {
+            val grantTakenCc = charges
+                .filter { it.pocket == CreditPocket.GRANT }
+                .sumOf { it.amountCc }
+            if (grantTakenCc > 0L) {
+                grantUsedByClassroomCc[classroomId] =
+                    (grantUsedByClassroomCc[classroomId] ?: 0L) + grantTakenCc
+            }
+        }
 
         val outcome = DebitOutcome.Charged(
             chargedCc = amountCc,
@@ -290,22 +462,29 @@ class CreditLedger(initialBalances: PocketBalances = PocketBalances()) {
     }
 
     /**
-     * Reparte [amountCc] sobre [order] sin exigir un único bolsillo.
-     * Devuelve `null` si el total disponible no alcanza: nunca deja un cobro parcial.
+     * Reparte [amountCc] sobre los bolsillos permitidos, respetando el máximo imputable
+     * de cada uno. Devuelve `null` si el total disponible no alcanza: **nunca** deja un
+     * cobro parcial de la división pedida.
      */
-    private fun allocate(amountCc: Long, order: List<CreditPocket>): List<PocketCharge>? {
+    private fun allocate(amountCc: Long, limits: List<PocketLimit>): List<PocketCharge>? {
         var remaining = amountCc
         val charges = mutableListOf<PocketCharge>()
-        for (pocket in order.distinct()) {
+        for (limit in limits) {
             if (remaining <= 0L) break
-            val available = balances.amountOf(pocket)
+            val available = minOf(balances.amountOf(limit.pocket), limit.maxCc)
             if (available <= 0L) continue
             val take = minOf(available, remaining)
-            charges += PocketCharge(pocket, take)
+            charges += PocketCharge(limit.pocket, take)
             remaining -= take
         }
         return if (remaining == 0L) charges else null
     }
+
+    /** Bolsillo habilitado para un débito y su tope imputable en esta operación. */
+    private data class PocketLimit(
+        val pocket: CreditPocket,
+        val maxCc: Long = Long.MAX_VALUE,
+    )
 
     companion object {
         /** Cota de claves de idempotencia recordadas en memoria. */
@@ -337,6 +516,9 @@ object CreditPolicy {
 
     /** Bienvenida y cada cátedra del grant beta: tope de 10 divisiones. */
     const val CLASSROOM_GRANT_CAP_DIVISIONS: Int = 10
+
+    /** El mismo tope expresado en centicréditos: 10 divisiones × 1 CP. */
+    const val CLASSROOM_GRANT_CAP_CC: Long = 10L * CreditUnits.PROCESSOR_CREDIT_CC
 
     /** Beta semana 1: 4 cátedras gratis. */
     const val BETA_WEEK_1_FREE_CLASSROOMS: Int = 4
