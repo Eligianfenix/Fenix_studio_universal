@@ -89,9 +89,9 @@ class HomeChatSessionStorage(context: Context) {
     ) {
         if (messages.isEmpty()) return
         val firstUserMsg = messages.firstOrNull { it.isUser }?.text?.take(35) ?: "Sesión académica"
-        val lastMsg = messages.lastOrNull { !it.isThinking }?.text?.take(50) ?: ""
+        val lastMsg = messages.lastOrNull { !it.isThinking && !it.isError }?.text?.take(50) ?: ""
 
-        val persistedMessages = messages.filterNot { it.isThinking }.map {
+        val persistedMessages = messages.filterNot { it.isThinking || it.isError }.map {
             PersistedChatMessage(
                 messageId = it.messageId,
                 isUser = it.isUser,

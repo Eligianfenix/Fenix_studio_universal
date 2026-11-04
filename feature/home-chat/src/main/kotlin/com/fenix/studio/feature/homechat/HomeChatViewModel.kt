@@ -20,6 +20,8 @@ import com.fenix.studio.core.designsystem.components.UniversalChatInputUiState
 import com.fenix.studio.core.network.model.FenixStreamEvent
 import com.fenix.studio.core.network.teacher.FenixTeacherKeylessService
 import com.fenix.studio.core.network.teacher.TeacherChatHistoryTurn
+import com.fenix.studio.core.network.teacher.TeacherChatOutcome
+import com.fenix.studio.core.network.teacher.toUserMessage
 import com.fenix.studio.domain.protocolv3.validation.AcademicDeontologicalGuard
 import com.fenix.studio.domain.protocolv3.validation.DeontologicalDecision
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,6 +58,7 @@ data class HomeChatMessageItem(
     val activeSlotIndex: Int? = null,
     val isDeontologicalWarning: Boolean = false,
     val isThinking: Boolean = false,
+    val isError: Boolean = false,
 )
 
 /**
@@ -396,7 +399,7 @@ class HomeChatViewModel(
 
         // Construimos el historial de memoria conversacional previa (omitiendo pensando y avisos deontológicos)
         val conversationHistory = _uiState.value.messages
-            .filterNot { it.isThinking || it.isDeontologicalWarning }
+            .filterNot { it.isThinking || it.isDeontologicalWarning || it.isError }
             .map { TeacherChatHistoryTurn(role = if (it.isUser) "user" else "assistant", content = it.text) }
 
         _uiState.update { state ->
@@ -431,12 +434,17 @@ class HomeChatViewModel(
             val startIdx = rotatingEndpointCursor
             rotatingEndpointCursor += 1
 
-            val aiReply = fenixTeacherService.sendChatToFenixTeacher(
+            val outcome = fenixTeacherService.sendChatToFenixTeacherResult(
                 userPrompt = currentPrompt,
                 systemInstruction = systemPrompt,
                 conversationHistory = conversationHistory,
                 startEndpointIndex = startIdx,
             )
+            val isFailure = outcome is TeacherChatOutcome.Failure
+            val aiReply = when (outcome) {
+                is TeacherChatOutcome.Success -> outcome.text
+                is TeacherChatOutcome.Failure -> outcome.kind.toUserMessage()
+            }
 
             _uiState.update { state ->
                 val updatedMessages = state.messages.map { msg ->
@@ -445,6 +453,7 @@ class HomeChatViewModel(
                             text = aiReply,
                             senderLabel = activeModel.displayName,
                             isThinking = false,
+                            isError = isFailure,
                         )
                     } else {
                         msg
@@ -475,14 +484,14 @@ class HomeChatViewModel(
         val activeSessionId = _uiState.value.currentSessionId
 
         val conversationHistory = currentMessages.subList(0, idx)
-            .filterNot { it.isThinking || it.isDeontologicalWarning || it.messageId == precedingUserMsg.messageId }
+            .filterNot { it.isThinking || it.isDeontologicalWarning || it.isError || it.messageId == precedingUserMsg.messageId }
             .map { TeacherChatHistoryTurn(role = if (it.isUser) "user" else "assistant", content = it.text) }
 
         _uiState.update { state ->
             state.copy(
                 messages = state.messages.map { msg ->
                     if (msg.messageId == item.messageId) {
-                        msg.copy(text = "Pensando...", isThinking = true)
+                        msg.copy(text = "Pensando...", isThinking = true, isError = false)
                     } else {
                         msg
                     }
@@ -496,12 +505,17 @@ class HomeChatViewModel(
             val startIdx = rotatingEndpointCursor
             rotatingEndpointCursor += 1
 
-            val aiReply = fenixTeacherService.sendChatToFenixTeacher(
+            val outcome = fenixTeacherService.sendChatToFenixTeacherResult(
                 userPrompt = precedingUserMsg.text,
                 systemInstruction = systemPrompt,
                 conversationHistory = conversationHistory,
                 startEndpointIndex = startIdx,
             )
+            val isFailure = outcome is TeacherChatOutcome.Failure
+            val aiReply = when (outcome) {
+                is TeacherChatOutcome.Success -> outcome.text
+                is TeacherChatOutcome.Failure -> outcome.kind.toUserMessage()
+            }
 
             _uiState.update { state ->
                 val updatedMessages = state.messages.map { msg ->
@@ -510,6 +524,7 @@ class HomeChatViewModel(
                             text = aiReply,
                             senderLabel = activeModel.displayName,
                             isThinking = false,
+                            isError = isFailure,
                         )
                     } else {
                         msg
