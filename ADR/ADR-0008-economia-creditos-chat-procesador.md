@@ -215,7 +215,7 @@ La comisión perpetua por reventa queda **descartada**. El bono único de §10 e
 5. Bienvenida: primera cátedra gratis hasta 10 divisiones; la división 11 se cobra.
 6. Bono: cátedra de 9 divisiones pagada → 720 cc al aprobarse; repetir la publicación **no** paga de nuevo.
 7. Cátedra gratuita: **no** genera bono.
-8. Biblioteca: cátedra de 9 divisiones = 3.600 cc ($3.600), instantánea.
+8. Biblioteca: cátedra de 9 divisiones = **2.880 cc ($3.600)** (80% de 3.600 cc), instantánea.
 9. Duplicado: si ya existe completa en biblioteca, no se ofrece publicar ni bono.
 10. Reinstalar: los comprados persisten; los gratuitos del día se recalculan.
 11. Idempotencia: reintentar el mismo mensaje o reanudar un checkpoint no cobra dos veces.
