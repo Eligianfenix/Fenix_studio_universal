@@ -18,6 +18,7 @@ import com.fenix.studio.core.designsystem.components.FenixChatAgentMode
 import com.fenix.studio.core.designsystem.components.FenixSelectableModel
 import com.fenix.studio.core.designsystem.components.UniversalChatInputUiState
 import com.fenix.studio.core.network.model.FenixStreamEvent
+import com.fenix.studio.core.network.router.TeacherChatEngine
 import com.fenix.studio.core.network.teacher.FenixTeacherKeylessService
 import com.fenix.studio.core.network.teacher.TeacherChatHistoryTurn
 import com.fenix.studio.core.network.teacher.TeacherChatOutcome
@@ -99,7 +100,7 @@ data class HomeChatUiState(
  */
 class HomeChatViewModel(
     private val otaExecutor: TaskGuardedUpdateExecutor = TaskGuardedUpdateExecutor(),
-    private val fenixTeacherService: FenixTeacherKeylessService = FenixTeacherKeylessService(),
+    private val fenixTeacherService: TeacherChatEngine = FenixTeacherKeylessService(),
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeChatUiState())

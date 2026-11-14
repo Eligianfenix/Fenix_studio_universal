@@ -11,6 +11,7 @@
 package com.fenix.studio.core.network.teacher
 
 import android.util.Log
+import com.fenix.studio.core.network.router.TeacherChatEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -117,7 +118,7 @@ data class DiscoveredKeylessRoute(
  *    y cancela las demás. Si un nodo entra en rate-limit por IP o cuota (ej. 2 RPM de OVHcloud), los demás nodos
  *    responden instantáneamente sin interrupción para el usuario.
  */
-class FenixTeacherKeylessService {
+class FenixTeacherKeylessService : TeacherChatEngine {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val discoveryMutex = Mutex()
@@ -324,11 +325,11 @@ class FenixTeacherKeylessService {
      * Variante tipada del envío. Presupuesto global acotado para que el tiempo total
      * nunca dependa de la cantidad de rutas del pool.
      */
-    suspend fun sendChatToFenixTeacherResult(
+    override suspend fun sendChatToFenixTeacherResult(
         userPrompt: String,
         systemInstruction: String,
-        conversationHistory: List<TeacherChatHistoryTurn> = emptyList(),
-        startEndpointIndex: Int = 0,
+        conversationHistory: List<TeacherChatHistoryTurn>,
+        startEndpointIndex: Int,
     ): TeacherChatOutcome = withContext(Dispatchers.IO) {
         var routes = discoverLiveKeylessRoutes(forceRefresh = false)
         if (routes.isEmpty()) {

@@ -21,7 +21,6 @@ import com.fenix.studio.core.security.keystore.FenixKeystoreVault
 import com.fenix.studio.core.security.keystore.JvmMemoryMasterKeyProvider
 import com.fenix.studio.core.security.quota.BetaTesterApplicationStatus
 import com.fenix.studio.core.security.quota.RemoteUserPermissionsProfile
-import com.fenix.studio.core.security.telemetry.AnonymousTelemetryManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,7 +34,6 @@ import java.io.OutputStream
 class SettingsAndByokVaultViewModel(
     private val keystoreVault: FenixKeystoreVault = FenixKeystoreVault(JvmMemoryMasterKeyProvider()),
     private val archiveManager: FenixSovereignArchiveManager = FenixSovereignArchiveManager(),
-    private val telemetryManager: AnonymousTelemetryManager = AnonymousTelemetryManager(),
     private val discoveryService: DynamicModelDiscoveryService? = null,
 ) : ViewModel() {
 
@@ -74,7 +72,6 @@ class SettingsAndByokVaultViewModel(
         profile: RemoteUserPermissionsProfile,
         nowEpochMs: Long = System.currentTimeMillis(),
     ) {
-        telemetryManager.setTelemetryConsent(profile.hasAcceptedAnonymousTelemetryConsent)
         val verifiedRole = if (!profile.supabaseUserId.isNullOrBlank() && profile.isApprovedByCreatorInSupabase) {
             profile.roleName
         } else {
@@ -102,7 +99,6 @@ class SettingsAndByokVaultViewModel(
      * fue aprobado en Supabase por el creador, permanece con rol `"student_free"` y estado `PENDING_ADMIN_APPROVAL`.
      */
     fun onToggleAnonymousTelemetryConsent(accepted: Boolean) {
-        telemetryManager.setTelemetryConsent(accepted)
         _uiState.update { current ->
             val nextStatus = when {
                 !accepted -> BetaTesterApplicationStatus.NOT_APPLIED

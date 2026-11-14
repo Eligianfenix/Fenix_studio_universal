@@ -231,7 +231,6 @@ fun FenixRootNavHost(
                     state = state,
                     onMarkTycScrolledToBottom = authViewModel::onTycScrolledToBottom,
                     onToggleTycAcceptance = authViewModel::onToggleTycAcceptance,
-                    onToggleBetaTesterTelemetryConsent = authViewModel::onToggleBetaTesterTelemetryConsent,
                     onSelectEntryMode = authViewModel::onSelectEntryMode,
                     onProceedClick = { navController.navigate(FenixDestinations.P02_HOME_CHAT) },
                     onQuickEscapeClick = { navController.navigate(FenixDestinations.P02_HOME_CHAT) },
