@@ -23,6 +23,13 @@ import com.fenix.studio.core.network.teacher.TeacherChatOutcome
 interface TeacherChatEngine {
 
     /**
+     * Nombre legible del proveedor que respondió el último turno, o `null` si todavía
+     * no hubo una respuesta exitosa. La UI lo usa solo como etiqueta, nunca para decidir.
+     */
+    val lastRespondingProviderLabel: String?
+        get() = null
+
+    /**
      * Envía un turno al motor y devuelve un resultado tipado.
      *
      * @param startEndpointIndex permite rotar el punto de entrada entre turnos.

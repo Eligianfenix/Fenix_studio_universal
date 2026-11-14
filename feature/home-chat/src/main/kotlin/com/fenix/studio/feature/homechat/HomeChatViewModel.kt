@@ -18,11 +18,15 @@ import com.fenix.studio.core.designsystem.components.FenixChatAgentMode
 import com.fenix.studio.core.designsystem.components.FenixSelectableModel
 import com.fenix.studio.core.designsystem.components.UniversalChatInputUiState
 import com.fenix.studio.core.network.model.FenixStreamEvent
+import com.fenix.studio.core.network.router.ByokTeacherChatEngine
 import com.fenix.studio.core.network.router.TeacherChatEngine
 import com.fenix.studio.core.network.teacher.FenixTeacherKeylessService
 import com.fenix.studio.core.network.teacher.TeacherChatHistoryTurn
 import com.fenix.studio.core.network.teacher.TeacherChatOutcome
 import com.fenix.studio.core.network.teacher.toUserMessage
+import com.fenix.studio.core.security.keystore.AndroidHardwareKeyProvider
+import com.fenix.studio.core.security.keystore.FenixKeystoreVault
+import com.fenix.studio.core.security.keystore.SharedPreferencesEncryptedSlotStore
 import com.fenix.studio.domain.protocolv3.validation.AcademicDeontologicalGuard
 import com.fenix.studio.domain.protocolv3.validation.DeontologicalDecision
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -100,8 +104,15 @@ data class HomeChatUiState(
  */
 class HomeChatViewModel(
     private val otaExecutor: TaskGuardedUpdateExecutor = TaskGuardedUpdateExecutor(),
-    private val fenixTeacherService: TeacherChatEngine = FenixTeacherKeylessService(),
+    private val injectedEngine: TeacherChatEngine? = null,
 ) : ViewModel() {
+
+    /**
+     * Motor de inferencia. Arranca en la red keyless y, al inicializar el contexto, pasa al
+     * router BYOK-primero con la bóveda real del dispositivo. Si el test inyecta un motor,
+     * se respeta y no se reemplaza.
+     */
+    private var fenixTeacherService: TeacherChatEngine = injectedEngine ?: FenixTeacherKeylessService()
 
     private val _uiState = MutableStateFlow(HomeChatUiState())
     val uiState: StateFlow<HomeChatUiState> = _uiState.asStateFlow()
@@ -115,12 +126,30 @@ class HomeChatViewModel(
         if (sessionStorage != null) return
         val storage = HomeChatSessionStorage(context)
         sessionStorage = storage
+        if (injectedEngine == null) {
+            fenixTeacherService = ByokTeacherChatEngine(
+                vault = FenixKeystoreVault(
+                    masterKeyProvider = AndroidHardwareKeyProvider(),
+                    slotStore = SharedPreferencesEncryptedSlotStore(context.applicationContext),
+                ),
+            )
+        }
         val historical = storage.loadHistoricalSessions()
         _uiState.update { current ->
             current.copy(
                 historicalSessions = historical,
             )
         }
+    }
+
+    /**
+     * Etiqueta visible del mensaje del asistente: modelo + proveedor que realmente respondió.
+     * Si hubo fallo, se deja la etiqueta base para no atribuir un error a un proveedor.
+     */
+    private fun assistantSenderLabel(baseLabel: String, isFailure: Boolean): String {
+        if (isFailure) return baseLabel
+        val provider = fenixTeacherService.lastRespondingProviderLabel ?: return baseLabel
+        return "$baseLabel · $provider"
     }
 
     fun onSelectModel(model: FenixSelectableModel) {
@@ -452,7 +481,7 @@ class HomeChatViewModel(
                     if (msg.messageId == replyMsgId) {
                         msg.copy(
                             text = aiReply,
-                            senderLabel = activeModel.displayName,
+                            senderLabel = assistantSenderLabel(activeModel.displayName, isFailure),
                             isThinking = false,
                             isError = isFailure,
                         )
@@ -523,7 +552,7 @@ class HomeChatViewModel(
                     if (msg.messageId == item.messageId) {
                         msg.copy(
                             text = aiReply,
-                            senderLabel = activeModel.displayName,
+                            senderLabel = assistantSenderLabel(activeModel.displayName, isFailure),
                             isThinking = false,
                             isError = isFailure,
                         )

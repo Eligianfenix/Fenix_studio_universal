@@ -119,7 +119,7 @@ fun FenixRootNavHost(
     val authViewModel: OnboardingAuthViewModel = viewModel()
     val homeChatViewModel: HomeChatViewModel = viewModel()
     val settingsViewModel: SettingsAndByokVaultViewModel = viewModel {
-        SettingsAndByokVaultViewModel.persistent()
+        SettingsAndByokVaultViewModel.persistent(context)
     }
     val processorViewModel: ProcessorViewModel = viewModel()
     val classroomsViewModel: ClassroomsViewModel = viewModel()

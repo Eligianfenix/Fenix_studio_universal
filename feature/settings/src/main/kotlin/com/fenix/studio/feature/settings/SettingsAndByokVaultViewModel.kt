@@ -23,6 +23,7 @@ import com.fenix.studio.core.security.archive.FenixSovereignArchiveManager
 import com.fenix.studio.core.security.keystore.AndroidHardwareKeyProvider
 import com.fenix.studio.core.security.keystore.FenixKeystoreVault
 import com.fenix.studio.core.security.keystore.JvmMemoryMasterKeyProvider
+import com.fenix.studio.core.security.keystore.SharedPreferencesEncryptedSlotStore
 import com.fenix.studio.core.security.quota.BetaTesterApplicationStatus
 import com.fenix.studio.core.security.quota.RemoteUserPermissionsProfile
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -247,11 +248,15 @@ class SettingsAndByokVaultViewModel(
 
     companion object {
         /**
-         * Instancia de producción: usa el `AndroidKeyStore` real, no memoria volátil.
-         * Las claves sobreviven al cierre de la app.
+         * Instancia de producción: llave maestra en el `AndroidKeyStore` real y sobres
+         * cifrados persistidos en disco, para que las claves sobrevivan al cierre.
          */
-        fun persistent(): SettingsAndByokVaultViewModel = SettingsAndByokVaultViewModel(
-            keystoreVault = FenixKeystoreVault(AndroidHardwareKeyProvider()),
-        )
+        fun persistent(context: android.content.Context): SettingsAndByokVaultViewModel =
+            SettingsAndByokVaultViewModel(
+                keystoreVault = FenixKeystoreVault(
+                    masterKeyProvider = AndroidHardwareKeyProvider(),
+                    slotStore = SharedPreferencesEncryptedSlotStore(context.applicationContext),
+                ),
+            )
     }
 }

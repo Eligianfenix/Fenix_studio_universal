@@ -9,6 +9,7 @@
 
 package com.fenix.studio.core.security.keystore
 
+import kotlinx.serialization.Serializable
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -24,6 +25,7 @@ import javax.crypto.spec.GCMParameterSpec
  * Sobre cifrado inmutable para una ranura (slot) de clave BYOK.
  * Jamás expone la clave en texto plano en `toString()`.
  */
+@Serializable
 data class EncryptedApiKeySlot(
     val providerId: String,
     val slotIndex: Int,
@@ -120,8 +122,13 @@ class JvmMemoryMasterKeyProvider : MasterKeyProvider {
  */
 class FenixKeystoreVault(
     private val masterKeyProvider: MasterKeyProvider = JvmMemoryMasterKeyProvider(),
+    private val slotStore: EncryptedSlotStore = InMemoryEncryptedSlotStore(),
 ) {
-    private val slotStorage = ConcurrentHashMap<String, EncryptedApiKeySlot>()
+    private val slotStorage = ConcurrentHashMap<String, EncryptedApiKeySlot>().apply {
+        slotStore.loadAll().forEach { slot ->
+            put(storageKey(slot.providerId, slot.slotIndex), slot)
+        }
+    }
     private val secureRandom = SecureRandom()
 
     /**
@@ -156,6 +163,7 @@ class FenixKeystoreVault(
             updatedAtEpochMs = nowEpochMs,
         )
         slotStorage[storageKey(providerId, slotIndex)] = encryptedSlot
+        slotStore.upsert(encryptedSlot)
         return encryptedSlot
     }
 
@@ -202,6 +210,7 @@ class FenixKeystoreVault(
     fun removeApiKeySlot(providerId: String, slotIndex: Int) {
         validateProviderAndSlot(providerId, slotIndex)
         slotStorage.remove(storageKey(providerId, slotIndex))
+        slotStore.delete(providerId, slotIndex)
     }
 
     /**

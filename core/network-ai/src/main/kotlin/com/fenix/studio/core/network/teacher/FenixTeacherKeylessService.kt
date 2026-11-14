@@ -113,12 +113,16 @@ data class DiscoveredKeylessRoute(
  *
  * Combina:
  * 1. Nodos Zero-Config Públicos (OVHcloud con modelos verificados rápidos y Pollinations).
- * 2. Pool Comunitario de Google Gemini a Costo 0 (9 claves en rotación round-robin a través del endpoint OpenAI-compatible).
- * 3. Enrutamiento paralelo Hedged Racing: lanza 2 o 3 rutas simultáneas. La primera que responde con éxito en ~1s gana
+ * 2. Enrutamiento paralelo Hedged Racing: lanza 2 o 3 rutas simultáneas. La primera que responde con éxito en ~1s gana
  *    y cancela las demás. Si un nodo entra en rate-limit por IP o cuota (ej. 2 RPM de OVHcloud), los demás nodos
  *    responden instantáneamente sin interrupción para el usuario.
+ *
+ * Desde `F3` este servicio es la **red de contención** del router: ya no conoce Render ni el Worker edge.
  */
 class FenixTeacherKeylessService : TeacherChatEngine {
+
+    override var lastRespondingProviderLabel: String? = null
+        private set
 
     private val json = Json { ignoreUnknownKeys = true }
     private val discoveryMutex = Mutex()
@@ -164,33 +168,18 @@ class FenixTeacherKeylessService : TeacherChatEngine {
         )
 
         /**
-         * Gateways conectados al Router y Dispatcher de Fénix (Cloudflare Anycast + Render Cluster + Fallbacks Zero-Config).
+         * Gateways comunitarios sin clave. Solo se llaman cuando las claves del usuario
+         * no están configuradas o fallaron.
          */
         val GATEWAY_CATALOG: List<FenixKeylessProviderGateway> = listOf(
-            // 1. Cloudflare Anycast Edge Gateway (Master Dispatcher en POP EZE con failover de 10 Nodos y 21 Proveedores)
-            FenixKeylessProviderGateway(
-                providerId = "fenix_dispatcher_edge",
-                providerName = "Fenix Dispatcher Edge (Cloudflare Anycast)",
-                modelsDiscoveryUrl = "https://fenix-router-edge.eligianlts88.workers.dev/v1/models",
-                chatCompletionsUrl = "https://fenix-router-edge.eligianlts88.workers.dev/v1/chat/completions",
-                defaultModelId = "openai/gpt-oss-120b",
-            ),
-            // 2. Render Upstream Direct (Master Dispatcher Docker en Oregon)
-            FenixKeylessProviderGateway(
-                providerId = "fenix_dispatcher_render",
-                providerName = "Fenix Dispatcher Render Upstream",
-                modelsDiscoveryUrl = "https://fenix-router-v3.onrender.com/v1/models",
-                chatCompletionsUrl = "https://fenix-router-v3.onrender.com/v1/chat/completions",
-                defaultModelId = "openai/gpt-oss-120b",
-            ),
-            // 3. Fallback Comunitario Zero-Config Pollinations AI
+            // 1. Fallback Comunitario Zero-Config Pollinations AI
             FenixKeylessProviderGateway(
                 providerId = "pollinations_keyless",
                 providerName = "Pollinations AI",
                 chatCompletionsUrl = "https://text.pollinations.ai/openai",
                 defaultModelId = "openai-fast",
             ),
-            // 4. Fallback Comunitario Zero-Config OVHcloud Kepler
+            // 2. Fallback Comunitario Zero-Config OVHcloud Kepler
             FenixKeylessProviderGateway(
                 providerId = "ovhcloud_ai_keyless",
                 providerName = "OVHcloud AI Endpoints",
@@ -241,28 +230,7 @@ class FenixTeacherKeylessService : TeacherChatEngine {
 
                 val discovered = mutableListOf<DiscoveredKeylessRoute>()
 
-                // 1. Descubrir rutas del Dispatcher Edge en Cloudflare Anycast (POP EZE)
-                val edgeGw = GATEWAY_CATALOG.find { it.providerId == "fenix_dispatcher_edge" }
-                if (edgeGw != null && !edgeGw.modelsDiscoveryUrl.isNullOrBlank()) {
-                    val edgeRoutes = runCatching { fetchModelsFromGateway(edgeGw) }.getOrDefault(emptyList())
-                    if (edgeRoutes.isNotEmpty()) {
-                        // Priorizar modelos de inferencia ultra-rápida (Groq/SambaNova LPU) sobre modelos de 25s
-                        val sortedEdgeRoutes = edgeRoutes.sortedBy { route ->
-                            val idx = PREFERRED_FAST_MODELS.indexOfFirst { route.discoveredModelId.contains(it, ignoreCase = true) }
-                            if (idx >= 0) idx else 99
-                        }
-                        discovered.addAll(sortedEdgeRoutes.take(4))
-                    } else if (edgeGw.defaultModelId != null) {
-                        discovered.add(
-                            DiscoveredKeylessRoute(
-                                gateway = edgeGw,
-                                discoveredModelId = edgeGw.defaultModelId,
-                            ),
-                        )
-                    }
-                }
-
-                // 2. Pollinations openai-fast en paralelo directo (Inferencia comunitaria sin colas)
+                // 1. Pollinations openai-fast en paralelo directo (Inferencia comunitaria sin colas)
                 val pollinationsGw = GATEWAY_CATALOG.find { it.providerId == "pollinations_keyless" }
                 if (pollinationsGw != null) {
                     discovered.add(
@@ -273,18 +241,7 @@ class FenixTeacherKeylessService : TeacherChatEngine {
                     )
                 }
 
-                // 3. Ruta directa de Render Upstream (Master Dispatcher)
-                val renderGw = GATEWAY_CATALOG.find { it.providerId == "fenix_dispatcher_render" }
-                if (renderGw != null && renderGw.defaultModelId != null) {
-                    discovered.add(
-                        DiscoveredKeylessRoute(
-                            gateway = renderGw,
-                            discoveredModelId = renderGw.defaultModelId,
-                        ),
-                    )
-                }
-
-                // 4. Fallback Zero-Config OVHcloud Kepler
+                // 2. Fallback Zero-Config OVHcloud Kepler
                 val ovhGw = GATEWAY_CATALOG.find { it.providerId == "ovhcloud_ai_keyless" }
                 if (ovhGw != null && !ovhGw.modelsDiscoveryUrl.isNullOrBlank()) {
                     val ovhRoutes = runCatching { fetchModelsFromGateway(ovhGw) }.getOrDefault(emptyList())
@@ -444,6 +401,7 @@ class FenixTeacherKeylessService : TeacherChatEngine {
             is TeacherChatOutcome.Success -> {
                 routePenaltyScore[route.routeKey] = 0
                 routeSuccessLatencyMs[route.routeKey] = elapsed
+                lastRespondingProviderLabel = route.gateway.providerName
                 Log.d("FenixTeacher", "Route ${route.routeKey} SUCCESS in ${elapsed}ms")
                 outcome
             }

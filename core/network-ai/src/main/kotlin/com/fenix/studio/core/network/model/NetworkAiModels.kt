@@ -35,7 +35,11 @@ data class RemoteRouterPolicyConfig(
     val maxJitterMs: Long = 1_250L,
     val defaultCooldownMs: Long = 4_000L,
     val burstReplenishCooldownMs: Long = 1_500L,
-    val defaultAssistedGatewayUrl: String = "https://academic-edge-proxy.workers.dev/v1",
+    /**
+     * Sin backend propio desde `F3`: la app autovalente no llama a Workers ni a Render.
+     * Si en el futuro se configura un gateway asistido, se inyecta explícitamente.
+     */
+    val defaultAssistedGatewayUrl: String = "",
     val defaultAssistedModelId: String? = null,
 )
 
@@ -56,7 +60,7 @@ data class AiProviderConfig(
         const val DEFAULT_FENIX_IA_DISPLAY_NAME: String = "Fénix IA (Gratuito Asistido)"
 
         fun createDefaultFenixIaProvider(
-            edgeGatewayBaseUrl: String = "https://academic-edge-proxy.workers.dev/v1",
+            edgeGatewayBaseUrl: String = "",
             dynamicModelId: String? = null,
         ): AiProviderConfig = AiProviderConfig(
             providerId = DEFAULT_FENIX_IA_PROVIDER_ID,
