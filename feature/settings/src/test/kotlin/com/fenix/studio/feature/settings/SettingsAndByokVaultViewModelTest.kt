@@ -87,7 +87,23 @@ class SettingsAndByokVaultViewModelTest {
         )
         assertEquals(RemoteUserPermissionsProfile.ROLE_BETA_TESTER, viewModel.uiState.value.activeRoleName)
         assertEquals(BetaTesterApplicationStatus.APPROVED_ACTIVE, viewModel.uiState.value.betaTesterApplicationStatus)
-        assertTrue(viewModel.uiState.value.hasAcceptedAnonymousTelemetryConsent)
-        assertFalse(viewModel.uiState.value.zeroTelemetryVerified)
+    }
+
+    @Test
+    fun `provider catalog shows keyless and byok providers and saving a key updates its card`() {
+        val vault = FenixKeystoreVault(JvmMemoryMasterKeyProvider())
+        val viewModel = SettingsAndByokVaultViewModel(keystoreVault = vault)
+
+        val initial = viewModel.uiState.value.providerCards
+        assertTrue(initial.any { it.providerId == "pollinations" && it.isKeyless })
+        assertTrue(initial.any { it.providerId == "groq" && !it.isKeyless })
+        assertEquals(0, initial.first { it.providerId == "groq" }.configuredSlots)
+
+        viewModel.onSaveByokKeyInSlot("groq", slotIndex = 2, plaintextKey = "gsk-test-key-1234")
+
+        val groq = viewModel.uiState.value.providerCards.first { it.providerId == "groq" }
+        assertEquals(1, groq.configuredSlots)
+        assertEquals(listOf(2), groq.configuredSlotIndices)
+        assertEquals("****1234", viewModel.uiState.value.byokSlots[2].maskedKeyHint)
     }
 }

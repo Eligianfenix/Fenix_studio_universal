@@ -118,7 +118,9 @@ fun FenixRootNavHost(
     // ViewModels de funcionalidades
     val authViewModel: OnboardingAuthViewModel = viewModel()
     val homeChatViewModel: HomeChatViewModel = viewModel()
-    val settingsViewModel: SettingsAndByokVaultViewModel = viewModel()
+    val settingsViewModel: SettingsAndByokVaultViewModel = viewModel {
+        SettingsAndByokVaultViewModel.persistent()
+    }
     val processorViewModel: ProcessorViewModel = viewModel()
     val classroomsViewModel: ClassroomsViewModel = viewModel()
     val docsViewModel: FenixDocsViewModel = viewModel()
@@ -408,8 +410,16 @@ fun FenixRootNavHost(
                 val state by settingsViewModel.uiState.collectAsState()
                 ByokVaultScreen(
                     state = state,
-                    onRemoveSlot = { slotIndex -> settingsViewModel.onRemoveByokKeySlot("fenix_ia", slotIndex) },
-                    onDiscoverModelsClick = { /* noop */ },
+                    onSaveKey = { providerId, slotIndex, key ->
+                        settingsViewModel.onSaveByokKeyInSlot(providerId, slotIndex, key)
+                    },
+                    onRemoveSlot = { providerId, slotIndex ->
+                        settingsViewModel.onRemoveByokKeySlot(providerId, slotIndex)
+                    },
+                    onProbe = { providerId, slotIndex ->
+                        settingsViewModel.onProbeProvider(providerId, slotIndex)
+                    },
+                    onDiscoverModelsClick = { /* se conecta en F3 */ },
                 )
             }
 

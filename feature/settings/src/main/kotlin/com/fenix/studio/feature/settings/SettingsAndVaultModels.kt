@@ -37,6 +37,34 @@ data class ByokSlotUiModel(
 )
 
 /**
+ * Proveedor tal como lo muestra `P-04`: catálogo + estado real de la bóveda.
+ */
+@Immutable
+data class ProviderCardUiModel(
+    val providerId: String,
+    val displayName: String,
+    val ringLabel: String,
+    val isKeyless: Boolean,
+    val configuredSlots: Int,
+    val configuredSlotIndices: List<Int>,
+    val defaultModelId: String?,
+    val notes: String,
+    val endpointVerified: Boolean,
+)
+
+/**
+ * Último resultado de "Probar conexión" de `P-04`.
+ */
+@Immutable
+data class ProviderProbeUiModel(
+    val providerId: String,
+    val status: com.fenix.studio.core.network.catalog.ProviderProbeStatus,
+    val message: String,
+    val modelsFound: Int = 0,
+    val sampleModels: List<String> = emptyList(),
+)
+
+/**
  * Estado del Entorno Linux Pasivo (`P-03d`): 0 MB de RAM consumidos en reposo hasta invocación explícita.
  */
 @Immutable
@@ -69,5 +97,8 @@ data class SettingsAndVaultUiState(
         ByokSlotUiModel(slotIndex = idx, status = ByokSlotVisualStatus.EMPTY)
     },
     val discoveredModels: List<ProviderModelEntity> = emptyList(),
+    val providerCards: List<ProviderCardUiModel> = emptyList(),
+    val providerProbe: ProviderProbeUiModel? = null,
+    val probingProviderId: String? = null,
     val lastExportedArchiveSanitized: Boolean? = null,
 )

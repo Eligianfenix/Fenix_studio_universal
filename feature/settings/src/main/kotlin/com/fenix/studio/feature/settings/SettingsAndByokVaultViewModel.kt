@@ -11,12 +11,16 @@
 package com.fenix.studio.feature.settings
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.fenix.studio.core.database.entity.ProviderModelEntity
 import com.fenix.studio.core.designsystem.theme.FenixThemeMode
 import com.fenix.studio.core.designsystem.theme.FenixTouchTargetProfile
+import com.fenix.studio.core.network.catalog.AiProviderCatalog
+import com.fenix.studio.core.network.catalog.ProviderConnectionProbe
 import com.fenix.studio.core.network.discovery.DynamicModelDiscoveryService
 import com.fenix.studio.core.security.archive.FenixPackageManifest
 import com.fenix.studio.core.security.archive.FenixSovereignArchiveManager
+import com.fenix.studio.core.security.keystore.AndroidHardwareKeyProvider
 import com.fenix.studio.core.security.keystore.FenixKeystoreVault
 import com.fenix.studio.core.security.keystore.JvmMemoryMasterKeyProvider
 import com.fenix.studio.core.security.quota.BetaTesterApplicationStatus
@@ -25,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.io.OutputStream
 
 /**
@@ -35,10 +40,15 @@ class SettingsAndByokVaultViewModel(
     private val keystoreVault: FenixKeystoreVault = FenixKeystoreVault(JvmMemoryMasterKeyProvider()),
     private val archiveManager: FenixSovereignArchiveManager = FenixSovereignArchiveManager(),
     private val discoveryService: DynamicModelDiscoveryService? = null,
+    private val providerProbe: ProviderConnectionProbe = ProviderConnectionProbe(),
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsAndVaultUiState())
     val uiState: StateFlow<SettingsAndVaultUiState> = _uiState.asStateFlow()
+
+    init {
+        refreshProviderCards()
+    }
 
     fun onSelectThemeMode(mode: FenixThemeMode) {
         _uiState.update { current ->
@@ -129,11 +139,65 @@ class SettingsAndByokVaultViewModel(
         keystoreVault.storeApiKey(providerId, slotIndex, trimmed)
         val suffix = trimmed.takeLast(4).padStart(8, '*')
         refreshSlotsForProvider(providerId, updatedSlotIndex = slotIndex, maskedHint = suffix)
+        refreshProviderCards()
+        _uiState.update { it.copy(providerProbe = null) }
     }
 
     fun onRemoveByokKeySlot(providerId: String, slotIndex: Int) {
         keystoreVault.removeApiKeySlot(providerId, slotIndex)
         refreshSlotsForProvider(providerId, updatedSlotIndex = null, maskedHint = null)
+        refreshProviderCards()
+        _uiState.update { it.copy(providerProbe = null) }
+    }
+
+    /**
+     * Prueba la conexión real contra el proveedor usando la clave de la ranura indicada.
+     * No consume cuota de generación: consulta `GET /models`.
+     */
+    fun onProbeProvider(providerId: String, slotIndex: Int = 0) {
+        val spec = AiProviderCatalog.byId(providerId) ?: return
+        _uiState.update { it.copy(probingProviderId = providerId) }
+
+        viewModelScope.launch {
+            val apiKey = if (spec.keyless) {
+                ""
+            } else {
+                keystoreVault.getDecryptedApiKey(providerId, slotIndex).orEmpty()
+            }
+            val result = providerProbe.probe(spec, apiKey)
+            _uiState.update { current ->
+                current.copy(
+                    probingProviderId = null,
+                    providerProbe = ProviderProbeUiModel(
+                        providerId = providerId,
+                        status = result.status,
+                        message = result.message,
+                        modelsFound = result.modelsFound,
+                        sampleModels = result.sampleModels,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun refreshProviderCards() {
+        val cards = AiProviderCatalog.providers.map { spec ->
+            val configured = if (spec.keyless) emptyList() else {
+                keystoreVault.listConfiguredSlots(spec.id).map { it.slotIndex }
+            }
+            ProviderCardUiModel(
+                providerId = spec.id,
+                displayName = spec.displayName,
+                ringLabel = spec.ring.label,
+                isKeyless = spec.keyless,
+                configuredSlots = configured.size,
+                configuredSlotIndices = configured,
+                defaultModelId = spec.defaultModelId,
+                notes = spec.notes,
+                endpointVerified = spec.endpointVerified,
+            )
+        }
+        _uiState.update { it.copy(providerCards = cards) }
     }
 
     suspend fun onTriggerDynamicModelDiscovery(
@@ -179,5 +243,15 @@ class SettingsAndByokVaultViewModel(
             }
             current.copy(byokSlots = updatedList)
         }
+    }
+
+    companion object {
+        /**
+         * Instancia de producción: usa el `AndroidKeyStore` real, no memoria volátil.
+         * Las claves sobreviven al cierre de la app.
+         */
+        fun persistent(): SettingsAndByokVaultViewModel = SettingsAndByokVaultViewModel(
+            keystoreVault = FenixKeystoreVault(AndroidHardwareKeyProvider()),
+        )
     }
 }
