@@ -171,6 +171,39 @@ sealed interface BatchDebitOutcome {
 }
 
 /**
+ * Plan de cobro por unidad. A diferencia de [ProcessorPlan], distingue las unidades que
+ * ya se pagaron alguna vez: ampliar una unidad con material nuevo no cuesta créditos.
+ */
+data class ProcessorUnitPlan(
+    val requestedUnits: Int,
+    val alreadyPaidUnits: Int,
+    val unpaidUnits: Int,
+    val affordableUnits: Int,
+    val deferredUnits: Int,
+    val costCc: Long,
+    val affordableCostCc: Long,
+    val grantAvailableCc: Long,
+    val balances: PocketBalances,
+) {
+    val canProcessAllRequested: Boolean get() = deferredUnits == 0
+}
+
+/** Resultado de cobrar unidades de una cátedra. */
+sealed interface UnitBatchOutcome {
+
+    data class Charged(
+        val chargedUnits: List<String>,
+        val alreadyPaidUnits: List<String>,
+        val costCc: Long,
+        val balancesAfter: PocketBalances,
+    ) : UnitBatchOutcome
+
+    data class Rejected(
+        val plan: ProcessorUnitPlan,
+    ) : UnitBatchOutcome
+}
+
+/**
  * Núcleo contable de la economía de Fénix Studio (`ADR-0008`).
  *
  * Es deliberadamente puro: no conoce Android, Room, Supabase ni la red. La persistencia
@@ -373,6 +406,107 @@ class CreditLedger(initialBalances: PocketBalances = PocketBalances()) {
     private fun remainingClassroomGrantCc(classroomId: String, capCc: Long): Long {
         val used = grantUsedByClassroomCc[classroomId] ?: 0L
         return (capCc - used).coerceAtLeast(0L)
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Cobro por unidad: 1 CP por unidad, una sola vez.
+    //
+    // El docente entrega el material de una unidad en varias tandas a lo largo de la
+    // cursada. La unidad se cobra la primera vez que se procesa; las ampliaciones
+    // posteriores de esa misma unidad no vuelven a costar créditos.
+    // ---------------------------------------------------------------------------------
+
+    private val paidUnits = mutableSetOf<String>()
+
+    private fun paidUnitKey(classroomId: String, unitId: String): String = "$classroomId#$unitId"
+
+    /** Indica si esta unidad ya fue abonada alguna vez. */
+    fun isUnitPaid(classroomId: String, unitId: String): Boolean = synchronized(lock) {
+        paidUnits.contains(paidUnitKey(classroomId, unitId))
+    }
+
+    /** Unidades ya abonadas de una cátedra. */
+    fun paidUnitsOfClassroom(classroomId: String): Set<String> = synchronized(lock) {
+        paidUnits.filter { it.startsWith("$classroomId#") }
+            .mapTo(mutableSetOf()) { it.substringAfter('#') }
+    }
+
+    /**
+     * Consulta previa sin cobrar: cuántas de las unidades pedidas ya están pagas y
+     * cuántas más entran con el saldo actual.
+     */
+    fun planProcessorUnits(
+        classroomId: String,
+        unitIds: List<String>,
+        grantCapCc: Long = CreditPolicy.CLASSROOM_GRANT_CAP_CC,
+    ): ProcessorUnitPlan = synchronized(lock) {
+        val alreadyPaid = unitIds.count { paidUnits.contains(paidUnitKey(classroomId, it)) }
+        val unpaid = unitIds.size - alreadyPaid
+
+        val grantAvailableCc = minOf(balances.grantCc, remainingClassroomGrantCc(classroomId, grantCapCc))
+        val availableCc = grantAvailableCc + balances.procFreeCc + balances.purchasedCc
+        val affordable = (availableCc / CreditUnits.PROCESSOR_CREDIT_CC).toInt().coerceAtMost(unpaid)
+
+        ProcessorUnitPlan(
+            requestedUnits = unitIds.size,
+            alreadyPaidUnits = alreadyPaid,
+            unpaidUnits = unpaid,
+            affordableUnits = affordable,
+            deferredUnits = unpaid - affordable,
+            costCc = unpaid * CreditUnits.PROCESSOR_CREDIT_CC,
+            affordableCostCc = affordable * CreditUnits.PROCESSOR_CREDIT_CC,
+            grantAvailableCc = grantAvailableCc,
+            balances = balances,
+        )
+    }
+
+    /**
+     * Cobra las unidades pedidas que todavía no fueron abonadas. Las ya pagas se procesan
+     * igual, sin costo. Si el saldo no cubre **todas** las unidades nuevas, no se cobra
+     * ninguna y se devuelve el plan para que el estudiante elija menos.
+     */
+    fun debitProcessorUnits(
+        classroomId: String,
+        unitIds: List<String>,
+        idempotencyKeyPrefix: String,
+        grantCapCc: Long = CreditPolicy.CLASSROOM_GRANT_CAP_CC,
+    ): UnitBatchOutcome = synchronized(lock) {
+        require(unitIds.isNotEmpty()) { "Hay que procesar al menos una unidad" }
+
+        val alreadyPaid = unitIds.filter { paidUnits.contains(paidUnitKey(classroomId, it)) }
+        val toCharge = unitIds.filterNot { paidUnits.contains(paidUnitKey(classroomId, it)) }
+
+        val plan = planProcessorUnits(classroomId, unitIds, grantCapCc)
+        if (plan.affordableUnits < toCharge.size) {
+            return UnitBatchOutcome.Rejected(plan = plan)
+        }
+
+        val charged = mutableListOf<DebitOutcome.Charged>()
+        for (unitId in toCharge) {
+            val outcome = debitProcessorForClassroom(
+                classroomId = classroomId,
+                idempotencyKey = "$idempotencyKeyPrefix:unit-$unitId",
+                grantCapCc = grantCapCc,
+            )
+            when (outcome) {
+                is DebitOutcome.Charged -> {
+                    charged += outcome
+                    paidUnits += paidUnitKey(classroomId, unitId)
+                }
+                is DebitOutcome.AlreadyCharged -> {
+                    charged += outcome.previous
+                    paidUnits += paidUnitKey(classroomId, unitId)
+                }
+                is DebitOutcome.Rejected -> return UnitBatchOutcome.Rejected(plan = plan)
+            }
+        }
+
+        UnitBatchOutcome.Charged(
+            chargedUnits = toCharge,
+            alreadyPaidUnits = alreadyPaid,
+            costCc = charged.sumOf { it.chargedCc },
+            balancesAfter = balances,
+        )
     }
 
     /**
