@@ -19,8 +19,12 @@ import java.security.MessageDigest
 enum class DocumentIngestionVerdict {
     TEXT_LAYER_NATIVE,
     OCR_REQUIRED_WARNING,
+    /** El texto se obtuvo con OCR local sobre un documento escaneado o una imagen. */
+    OCR_APPLIED,
     DUPLICATE_SHA256,
     CORRUPT_OR_EMPTY,
+    /** El formato no está soportado por el motor de esta instalación. */
+    UNSUPPORTED_FORMAT,
 }
 
 /**
@@ -78,8 +82,26 @@ class PreIngestionGuardian {
         totalPages: Int,
         sampledPagesText: List<String>,
         existingSha256Hashes: Set<String> = emptySet(),
+    ): PreIngestionScanResult = inspectDocument(
+        documentName = documentName,
+        computedSha256Hex = computeStreamingSha256Hex(inputStream),
+        totalPages = totalPages,
+        sampledPagesText = sampledPagesText,
+        existingSha256Hashes = existingSha256Hashes,
+    )
+
+    /**
+     * Variante para cuando el hash ya se calculó (por ejemplo, en el motor de extracción):
+     * evita leer el archivo dos veces.
+     */
+    fun inspectDocument(
+        documentName: String,
+        computedSha256Hex: String,
+        totalPages: Int,
+        sampledPagesText: List<String>,
+        existingSha256Hashes: Set<String> = emptySet(),
     ): PreIngestionScanResult {
-        val sha256Hex = computeStreamingSha256Hex(inputStream)
+        val sha256Hex = computedSha256Hex
 
         if (totalPages <= 0) {
             return PreIngestionScanResult(
