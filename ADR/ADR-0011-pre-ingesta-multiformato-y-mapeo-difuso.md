@@ -120,8 +120,12 @@ cualquier importación manual.
 
 ## 3. Consecuencias
 
-- `:core:document-engine` pasa de 0 a 43 tests JVM: formatos, extractores con ZIP
+- `:core:document-engine` pasa de 0 a 45 tests JVM: formatos, extractores con ZIP
   sintético, sanitizer, pre-ingesta, normalizador, matcher y propuesta.
+- **Primera validación con material real:** `RealCatedraFixturesTest` leyó los 5
+  archivos que el motor puede procesar sin Android (3 PPTX, 1 ODT, 1 DOCX) y todos
+  devolvieron texto (> 200 caracteres) sin veredicto corrupto. Los 36 PDF siguen
+  pendientes del dispositivo.
 - El APK debug crece a ~323 MB (PDFBox + ML Kit + 27 dex). Es un build de depuración;
   release con R8 debe medirse antes de distribuir.
 - La extracción PDF y el OCR **no se pueden probar en JVM**: requieren el Redmi. Hasta
