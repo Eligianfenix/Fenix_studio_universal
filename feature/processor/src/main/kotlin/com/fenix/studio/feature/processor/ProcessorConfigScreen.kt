@@ -169,7 +169,7 @@ fun ProcessorConfigScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Continuar a Matriz Curricular (P-05b)",
+                text = "Continuar a Carga de Material (P-05a)",
                 style = typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                 color = colors.onPrimary,
             )

@@ -74,6 +74,8 @@ import com.fenix.studio.feature.homechat.HomeChatMessageItem
 import com.fenix.studio.feature.homechat.HomeChatScreen
 import com.fenix.studio.feature.homechat.HomeChatViewModel
 import com.fenix.studio.feature.processor.CurricularMatrixScreen
+import com.fenix.studio.feature.processor.PreIngestionScreen
+import com.fenix.studio.feature.processor.PreIngestionViewModel
 import com.fenix.studio.feature.processor.ProcessingMonitorScreen
 import com.fenix.studio.feature.processor.ProcessorConfigScreen
 import com.fenix.studio.feature.processor.ProcessorViewModel
@@ -92,6 +94,7 @@ object FenixDestinations {
     const val P04_BYOK_VAULT = "p04_byok_vault"
     const val P04B_GET_CREDITS = "p04b_get_credits"
     const val P05_PROCESSOR_CONFIG = "p05_processor_config"
+    const val P05A_PRE_INGESTION = "p05a_pre_ingestion"
     const val P05B_CURRICULAR_MATRIX = "p05b_curricular_matrix"
     const val P06_PROCESSING_MONITOR = "p06_processing_monitor"
     const val P07_CLASSROOMS = "p07_classrooms"
@@ -122,6 +125,9 @@ fun FenixRootNavHost(
         SettingsAndByokVaultViewModel.persistent(context)
     }
     val processorViewModel: ProcessorViewModel = viewModel()
+    val preIngestionViewModel: PreIngestionViewModel = viewModel {
+        PreIngestionViewModel.persistent(context)
+    }
     val classroomsViewModel: ClassroomsViewModel = viewModel()
     val docsViewModel: FenixDocsViewModel = viewModel()
     val communityViewModel: CommunityViewModel = viewModel()
@@ -440,8 +446,22 @@ fun FenixRootNavHost(
                     onProgramaYearChanged = processorViewModel::onProgramaYearChanged,
                     onConfirmConfiguration = {
                         if (processorViewModel.onConfirmConfiguration()) {
-                            navController.navigate(FenixDestinations.P05B_CURRICULAR_MATRIX)
+                            navController.navigate(FenixDestinations.P05A_PRE_INGESTION)
                         }
+                    },
+                )
+            }
+
+            // P-05a Pre-ingesta multiformato
+            composable(FenixDestinations.P05A_PRE_INGESTION) {
+                val state by preIngestionViewModel.uiState.collectAsState()
+                PreIngestionScreen(
+                    state = state,
+                    onDocumentsPicked = { uris -> preIngestionViewModel.onDocumentsPicked(uris) },
+                    onRemove = preIngestionViewModel::onRemove,
+                    onClearAll = preIngestionViewModel::onClearAll,
+                    onContinue = {
+                        navController.navigate(FenixDestinations.P05B_CURRICULAR_MATRIX)
                     },
                 )
             }
