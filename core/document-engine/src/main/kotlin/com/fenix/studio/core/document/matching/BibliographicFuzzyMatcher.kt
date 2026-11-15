@@ -10,6 +10,8 @@
 
 package com.fenix.studio.core.document.matching
 
+import com.fenix.studio.core.document.ingestion.DocumentCandidateMetadata
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -189,10 +191,240 @@ class BibliographicFuzzyMatcher {
             .coerceIn(0.0, 1.0)
     }
 
+    /**
+     * Conciliación real entre un archivo del lote y una cita del programa analítico.
+     *
+     * Fórmula del deep research (`Fase 0`):
+     * `0.45 · (0.55·autor + 0.45·Jaro-Winkler de título) + 0.35 · Levenshtein ponderado + 0.20 · SimHash + bono patronímico`
+     *
+     * Es **determinista**: no participa ningún modelo de lenguaje. Si no hay evidencia
+     * suficiente, la cita no se asigna y el archivo queda huérfano para revisión humana.
+     */
+    fun evaluateCandidateAgainstCitation(
+        candidate: DocumentCandidateMetadata,
+        citation: SyllabusCitationEntry,
+    ): CitationMatchResult {
+        val candidateFileNameNorm = AcademicTextNormalizer.normalize(
+            candidate.originalFileName.substringBeforeLast('.'),
+        )
+
+        val authorEvaluation = evaluateHispanicAuthorAffinity(
+            citationSurnameNorm = citation.primaryAuthorSurnameNormalized,
+            citationGivenNorm = citation.primaryAuthorGivenNameNormalized,
+            citationRawAuthor = citation.authors.firstOrNull().orEmpty(),
+            candidateHeaderNorm = candidate.normalizedHeaderText,
+            candidateAuthors = candidate.candidateAuthors,
+            candidateFileNameNorm = candidateFileNameNorm,
+        )
+
+        val citationTitleNorm = AcademicTextNormalizer.normalize(citation.title)
+        val candidateTitleNorm = AcademicTextNormalizer.normalize(
+            "${candidate.candidateTitle} ${candidate.originalFileName.substringBeforeLast('.')}",
+        )
+
+        val titleJaroWinkler = computeJaroWinklerSimilarity(citationTitleNorm, candidateTitleNorm)
+        val combinedJaroWinkler = (WEIGHT_AUTHOR_VS_TITLE * authorEvaluation.authorScore) +
+            (WEIGHT_TITLE_VS_AUTHOR * titleJaroWinkler)
+
+        val weightedLevenshtein = computeTokenWeightedLevenshteinSimilarity(
+            tokensA = AcademicTextNormalizer.tokenizeSignificant(citationTitleNorm),
+            tokensB = candidate.significantTokens,
+        )
+
+        val hammingDistance = AcademicTextNormalizer.hammingDistance(
+            AcademicTextNormalizer.simHash64(citationTitleNorm),
+            candidate.headerSimHash64,
+        )
+        val simHashScore = if (hammingDistance <= SIMHASH_HAMMING_TOLERANCE) {
+            1.0
+        } else {
+            ((64 - hammingDistance).coerceAtLeast(0)) / 64.0
+        }
+
+        // Solo se premia al autor si además hay evidencia en el título: evita que un
+        // apellido común ("García") asigne cualquier archivo a cualquier cita.
+        val patronymicBonus = if (authorEvaluation.authorScore >= AUTHOR_CONSOLIDATION_THRESHOLD &&
+            (weightedLevenshtein >= 0.35 || titleJaroWinkler >= 0.68)
+        ) {
+            0.18
+        } else {
+            0.0
+        }
+
+        val total = min(
+            1.0,
+            (WEIGHT_COMBINED_LEXICAL * combinedJaroWinkler) +
+                (WEIGHT_LEVENSHTEIN * weightedLevenshtein) +
+                (WEIGHT_SIMHASH * simHashScore) +
+                patronymicBonus,
+        )
+
+        return CitationMatchResult(
+            citation = citation,
+            combinedScore = total,
+            confidence = classifyConfidence(total),
+            isStrongMatch = total >= STRONG_CITATION_MATCH_THRESHOLD,
+            authorScore = authorEvaluation.authorScore,
+            titleJaroWinkler = titleJaroWinkler,
+            weightedLevenshtein = weightedLevenshtein,
+            simHashHammingDistance = hammingDistance,
+            authorCanonical = authorEvaluation.canonical,
+        )
+    }
+
+    /** Mejor cita para un archivo, o `null` si no hay citas. */
+    fun bestCitationMatch(
+        candidate: DocumentCandidateMetadata,
+        citations: List<SyllabusCitationEntry>,
+    ): CitationMatchResult? = citations
+        .asSequence()
+        .map { citation -> evaluateCandidateAgainstCitation(candidate, citation) }
+        .maxByOrNull { it.combinedScore }
+
+    /**
+     * Similitud de Levenshtein **ponderada por longitud de token** con fila rodante
+     * (`O(min(|A|,|B|))` de memoria): los tokens largos pesan más porque suelen ser
+     * apellidos y sustantivos distintivos.
+     */
+    fun computeTokenWeightedLevenshteinSimilarity(
+        tokensA: Set<String>,
+        tokensB: Set<String>,
+    ): Double {
+        if (tokensA.isEmpty() || tokensB.isEmpty()) return 0.0
+
+        var weightedSimilaritySum = 0.0
+        var totalWeight = 0.0
+
+        for (tokenA in tokensA) {
+            val tokenWeight = tokenA.length.coerceAtLeast(3).toDouble()
+            totalWeight += tokenWeight
+
+            var bestTokenSimilarity = 0.0
+            for (tokenB in tokensB) {
+                if (abs(tokenA.length - tokenB.length) > MAX_TOKEN_LENGTH_DELTA) continue
+                val distance = computeCharLevenshteinDistance(tokenA, tokenB)
+                val maxLength = max(tokenA.length, tokenB.length).toDouble()
+                val similarity = (maxLength - distance) / maxLength
+                if (similarity > bestTokenSimilarity) bestTokenSimilarity = similarity
+                if (bestTokenSimilarity == 1.0) break
+            }
+            if (bestTokenSimilarity >= TOKEN_SIMILARITY_FLOOR) {
+                weightedSimilaritySum += bestTokenSimilarity * tokenWeight
+            }
+        }
+
+        return if (totalWeight > 0.0) (weightedSimilaritySum / totalWeight).coerceIn(0.0, 1.0) else 0.0
+    }
+
+    /**
+     * Levenshtein de caracteres con dos filas primitivas, sin matrices bidimensionales.
+     */
+    fun computeCharLevenshteinDistance(a: String, b: String): Int {
+        if (a == b) return 0
+        if (a.isEmpty()) return b.length
+        if (b.isEmpty()) return a.length
+
+        var previousRow = IntArray(b.length + 1) { it }
+        var currentRow = IntArray(b.length + 1)
+
+        for (i in a.indices) {
+            currentRow[0] = i + 1
+            for (j in b.indices) {
+                val cost = if (a[i] == b[j]) 0 else 1
+                currentRow[j + 1] = min(
+                    min(currentRow[j] + 1, previousRow[j + 1] + 1),
+                    previousRow[j] + cost,
+                )
+            }
+            val swap = previousRow
+            previousRow = currentRow
+            currentRow = swap
+        }
+        return previousRow[b.length]
+    }
+
+    /**
+     * Resolución patronímica hispana: aísla el apellido raíz ("Aquín" en "Nora Aquín de
+     * Brignone"), tolera variantes con Jaro-Winkler y consolida alias en un
+     * `AuthorCanonical` cuando la coincidencia supera el umbral.
+     */
+    private fun evaluateHispanicAuthorAffinity(
+        citationSurnameNorm: String,
+        citationGivenNorm: String,
+        citationRawAuthor: String,
+        candidateHeaderNorm: String,
+        candidateAuthors: List<String>,
+        candidateFileNameNorm: String,
+    ): AuthorAffinityEvaluation {
+        if (citationSurnameNorm.isBlank()) return AuthorAffinityEvaluation(0.0, null)
+
+        val surnameInHeader = candidateHeaderNorm.split(' ').any { token ->
+            computeJaroWinklerSimilarity(citationSurnameNorm, token) >= SURNAME_IN_TEXT_THRESHOLD
+        }
+        val surnameInFileName = candidateFileNameNorm.contains(citationSurnameNorm)
+
+        var bestCandidateFullAuthor = citationRawAuthor
+        var bestScore = if (surnameInHeader || surnameInFileName) 0.90 else 0.0
+
+        val citationInitial = citationGivenNorm.firstOrNull()
+
+        for (candidateAuthor in candidateAuthors) {
+            val normalizedAuthor = AcademicTextNormalizer.normalize(candidateAuthor)
+            val authorTokens = normalizedAuthor.split(' ').filter { it.isNotBlank() }
+
+            for (token in authorTokens) {
+                val surnameSimilarity = computeJaroWinklerSimilarity(citationSurnameNorm, token)
+                if (surnameSimilarity < AUTHOR_CONSOLIDATION_THRESHOLD) continue
+
+                val initialMatches = citationInitial != null && authorTokens.any { other ->
+                    other != token && other.firstOrNull() == citationInitial
+                }
+                val computed = if (initialMatches) {
+                    min(1.0, surnameSimilarity * 0.95 + 0.05)
+                } else {
+                    surnameSimilarity * 0.90
+                }
+                if (computed > bestScore) {
+                    bestScore = computed
+                    bestCandidateFullAuthor = candidateAuthor
+                }
+            }
+        }
+
+        val canonical = if (bestScore >= AUTHOR_CONSOLIDATION_THRESHOLD) {
+            AuthorCanonical(
+                canonicalId = "AUTH-${citationSurnameNorm.uppercase()}",
+                canonicalName = citationRawAuthor.ifBlank { bestCandidateFullAuthor },
+                rootPatronymicLexeme = citationSurnameNorm,
+                aliases = setOf(citationRawAuthor, bestCandidateFullAuthor)
+                    .filter { it.isNotBlank() }
+                    .toSet(),
+            )
+        } else {
+            null
+        }
+
+        return AuthorAffinityEvaluation(bestScore, canonical)
+    }
+
     companion object {
         const val THRESHOLD_HIGH_GREEN: Double = 0.85
         const val THRESHOLD_MEDIUM_AMBER: Double = 0.60
         private const val WEIGHT_JARO_WINKLER: Double = 0.55
         private const val WEIGHT_DICE_SORENSEN: Double = 0.45
+
+        /** Pesos del conciliador archivo ↔ cita (deep research `Fase 0`). */
+        private const val WEIGHT_AUTHOR_VS_TITLE: Double = 0.55
+        private const val WEIGHT_TITLE_VS_AUTHOR: Double = 0.45
+        private const val WEIGHT_COMBINED_LEXICAL: Double = 0.45
+        private const val WEIGHT_LEVENSHTEIN: Double = 0.35
+        private const val WEIGHT_SIMHASH: Double = 0.20
+
+        const val AUTHOR_CONSOLIDATION_THRESHOLD: Double = 0.88
+        const val STRONG_CITATION_MATCH_THRESHOLD: Double = 0.72
+        private const val SIMHASH_HAMMING_TOLERANCE: Int = 4
+        private const val SURNAME_IN_TEXT_THRESHOLD: Double = 0.92
+        private const val TOKEN_SIMILARITY_FLOOR: Double = 0.72
+        private const val MAX_TOKEN_LENGTH_DELTA: Int = 5
     }
 }

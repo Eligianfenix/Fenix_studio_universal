@@ -43,8 +43,9 @@ tasks.withType<Test> {
 }
 
 dependencies {
-    implementation(project(":core:database"))
-    implementation(project(":domain"))
+    // `api` porque los modelos de mapeo exponen MaterialRoleType y SyllabusGraph.
+    api(project(":core:database"))
+    api(project(":domain"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.documentfile)
